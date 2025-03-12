@@ -9,23 +9,33 @@ import { GameOverScene } from './scenes/GameOverScene';
  */
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,     // Let Phaser decide whether to use WebGL or Canvas
-  width: 800,            // Base game width in pixels
-  height: 600,           // Base game height in pixels
+  
+  // Base dimensions used for internal calculations and positioning
+  // These are NOT the final display size - the game will scale responsively
+  // to fill the available screen space (see scale settings below)
+  width: 800,            // Base coordinate system width
+  height: 600,           // Base coordinate system height
+  
   scene: [MenuScene, GameScene, GameOverScene],  // Scene order (MenuScene loads first)
   backgroundColor: '#242424',  // Dark background color
   parent: 'game-container', // Use the div from our HTML
   scale: {
-    mode: Phaser.Scale.RESIZE, // Use RESIZE mode to fill screen
-    autoCenter: Phaser.Scale.CENTER_BOTH, // Center the game in both dimensions
-    width: '100%',
-    height: '100%',
+    // Responsive scaling configuration
+    mode: Phaser.Scale.RESIZE,          // Dynamically resize as the browser window changes
+    autoCenter: Phaser.Scale.CENTER_BOTH, // Center the game canvas in the window
+    
+    // These override the base dimensions above for the display size
+    width: '100%',                      // Fill the container width
+    height: '100%',                     // Fill the container height
+    
+    // Set sensible boundaries for the game's scaling
     min: {
-      width: 320,
-      height: 480
+      width: 320,                       // Minimum width (mobile phones)
+      height: 480                       // Minimum height (mobile phones)
     },
     max: {
-      width: 2560,
-      height: 1440
+      width: 2560,                      // Maximum width (high-res displays)
+      height: 1440                      // Maximum height (high-res displays)
     }
   },
   dom: {

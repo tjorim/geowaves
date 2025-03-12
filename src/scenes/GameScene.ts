@@ -1,67 +1,26 @@
 import Phaser from 'phaser';
 import { ResourceBar } from '../ui/ResourceBar';
-import { Button } from '../ui/Button';
+import { Button, BUTTON_STYLES } from '../ui/Button';
 import { ActionOption, ActionData } from '../ui/ActionOption';
-import { events } from '../data/events';
+import { 
+  events,
+  GameEvent,
+  getWeightedEvents
+} from '../data/events';
 import { communityEngagement } from '../data/community';
 import { researchTheoretical } from '../data/researchTheoretical';
 import { researchPractical } from '../data/researchPractical';
-
-// Game configuration constants
-interface GameConfig {
-  initialValues: {
-    money: number;
-    turns: number;
-    opinion: number;
-    risk: number;
-    research: number;
-  };
-  limits: {
-    researchNeeded: number;
-    maxRisk: number;
-  };
-  effects: {
-    highRiskThreshold: number;
-    highRiskOpinionLoss: number;
-  };
-  events: {
-    baseChance: number;         // Base chance of an event (percentage)
-    minTurnsBetweenEvents: number; // Minimum turns between events for pacing
-    maxConsecutiveQuietTurns: number; // Max turns without events before forcing one
-    riskMultiplier: number;     // How much risk impacts event chance
-    bigEventThreshold: number;  // Risk threshold for major events
-  };
-}
-
-// Centralized game configuration - can be easily moved to external file
-const DEFAULT_GAME_CONFIG: GameConfig = {
-  initialValues: {
-    money: 200,       // Starting funds (increased from 100)
-    turns: 15,        // Available turns (increased from 10)
-    opinion: 100,     // Initial public opinion
-    risk: 10,         // Initial seismic risk (increased from 0 to create more events)
-    research: 0       // Starting research points
-  },
-  limits: {
-    researchNeeded: 50, // Research points needed to win
-    maxRisk: 100        // Maximum possible risk level
-  },
-  effects: {
-    highRiskThreshold: 50, // Risk above this causes passive opinion loss
-    highRiskOpinionLoss: 5 // Amount of opinion lost per turn when risk is high
-  },
-  events: {
-    baseChance: 15,       // 15% base chance of event regardless of risk
-    minTurnsBetweenEvents: 2, // At least 2 turns between events for gameplay pacing
-    maxConsecutiveQuietTurns: 3, // Force event after 3 quiet turns
-    riskMultiplier: 0.7,   // Each point of risk adds 0.7% to event chance
-    bigEventThreshold: 70  // Risk above 70 enables major event types
-  }
-};
+import { GameConfig, DEFAULT_GAME_CONFIG } from '../config/gameConfig';
 
 export class GameScene extends Phaser.Scene {
   // Reference to game configuration for easy access
   private config: GameConfig = DEFAULT_GAME_CONFIG;
+  
+  // Define the type for the resize event handler
+  private resizeHandler: ((scene: Phaser.Scene, width: number, height: number) => void) | null = null;
+  
+  // Track resize timeout ID for cleanup
+  private resizeTimeoutId: number | null = null;
 
   // Game variables
   private money = this.config.initialValues.money;
@@ -69,361 +28,644 @@ export class GameScene extends Phaser.Scene {
   private publicOpinion = this.config.initialValues.opinion;
   private risk = this.config.initialValues.risk;
   private turn = 1;
+  
+  // Research points as a resource
   private researchPoints = this.config.initialValues.research;
+  
+  // UI elements
+  private moneyBar?: ResourceBar;
+  private turnsBar?: ResourceBar;
+  private opinionBar?: ResourceBar;
+  private riskBar?: ResourceBar;
+  private researchBar?: ResourceBar;
+  private infoText?: Phaser.GameObjects.Text;
   
   // Event pacing variables
   private turnsSinceLastEvent = 0;
   private consecutiveQuietTurns = 0;
   private hadEventLastTurn = false;
   
-  // UI container for action buttons and descriptions
-  private actionsContainer!: Phaser.GameObjects.Container;
-
-  // Resource bars
-  private moneyBar!: ResourceBar;
-  private turnsBar!: ResourceBar;
-  private opinionBar!: ResourceBar;
-  private riskBar!: ResourceBar;
-  private researchBar!: ResourceBar;
-
-  // Info text
-  private infoText!: Phaser.GameObjects.Text;
+  // Track passive rewards (applied only once per turn)
+  private passiveRewardsApplied = false;
   
-  // Common UI styles
-  private textStyleInfo!: Phaser.Types.GameObjects.Text.TextStyle;
-
-  constructor() { super('GameScene'); }
+  // Define standard colors for use throughout the UI
+  private static readonly COLORS = {
+    POSITIVE: 0x2ecc71, // Green for positive effects
+    NEGATIVE: 0xe74c3c, // Red for negative effects
+    NEUTRAL: 0x3498db,  // Blue for neutral/information
+    MONEY: 0xf1c40f,    // Yellow/gold for money
+    RISK: 0xe67e22,     // Orange for risk
+    INFO: 0x95a5a6,     // Gray for information
+    DARK_BG: 0x2c3e50,  // Dark background
+    WARNING: 0xff9800,  // Orange for warnings
+    SUCCESS: 0x27ae60,  // Green for success
+    ERROR: 0xc0392b,    // Darker red for errors
+  };
   
-  // We no longer use this method since we're creating buttons directly in the UI methods
+  // Define layout constants for consistent UI
+  private static readonly LAYOUT = {
+    SEPARATOR_HEIGHT: 2,
+    MARGIN: 20,
+    SPACING: 10,
+    INFO_HEIGHT: 60,
+    RESOURCE_HEIGHT: 30,
+    BUTTON_HEIGHT: 50,
+    BUTTON_WIDTH: 180,
+    OPTION_PADDING: 10,
+    TEXT_WRAP_PERCENT: 0.7, // Percentage of screen width for text wrapping
+  };
 
-  create() {
-    // Initialize the UI immediately
-    this.initUI();
-    
-    // Listen for resize events
-    this.scale.on('resize', this.handleResize, this);
+  constructor() {
+    super({ key: 'GameScene' });
   }
-  
+
   /**
-   * Initialize UI elements based on current screen size
+   * Helper method to get layout parameters based on current screen dimensions
+   * @returns Object with calculated layout values
    */
-  initUI() {
-    // Clear existing UI if present (important for resize handling)
-    if (this.actionsContainer) {
-      this.actionsContainer.destroy();
-    }
-    
-    if (this.moneyBar) {
-      this.moneyBar.destroy();
-      this.turnsBar.destroy();
-      this.opinionBar.destroy();
-      this.riskBar.destroy();
-      this.researchBar.destroy();
-    }
-    
-    if (this.infoText) {
-      this.infoText.destroy();
-    }
-    
-    // Get screen dimensions for responsive layout
+  private getLayoutParams() {
     const gameWidth = this.scale.width;
     const gameHeight = this.scale.height;
-    const isMobile = gameWidth < 768;
-    
-    // Detect orientation for mobile
     const isLandscape = gameWidth > gameHeight;
+    const isMobile = gameWidth < 768; // Detect mobile based on width
     
-    // Define text style for info text
-    this.textStyleInfo = {
-      fontSize: isMobile ? '20px' : '16px',
-      color: '#fff',
-      wordWrap: { width: gameWidth * 0.9 }
+    // Calculate positioning based on orientation
+    const mainX = isLandscape ? gameWidth * 0.05 : gameWidth * 0.1;
+    const mainY = isLandscape ? gameHeight * 0.1 : gameHeight * 0.05;
+    
+    // Scale resource bar widths based on screen size
+    const resourceWidth = isLandscape 
+      ? Math.min(gameWidth * 0.25, 300) 
+      : Math.min(gameWidth * 0.8, 400);
+    
+    // Return all layout values in one object
+    return {
+      gameWidth,
+      gameHeight,
+      isLandscape,
+      isMobile,
+      mainX,
+      mainY,
+      resourceWidth
     };
-    
-    // Adjust sizes based on screen dimensions and orientation
-    const barWidth = isMobile ? Math.min(150, gameWidth * 0.4) : 150;
-    const barHeight = 15;
-    const startY = 20;
-    const spacing = isMobile ? 20 : 25;
-
-    // Create resource bars - adjust position if on mobile
-    const barX = isMobile ? gameWidth * 0.05 : Math.max(50, gameWidth * 0.1); // Match button spacing
-    this.moneyBar = new ResourceBar(this, barX, startY, barWidth, barHeight, this.config.initialValues.money, this.money, 'Money', 0x00ff00);
-    this.turnsBar = new ResourceBar(this, barX, startY + spacing, barWidth, barHeight, this.config.initialValues.turns, this.turnsRemaining, 'Turns', 0x00ffff);
-    this.opinionBar = new ResourceBar(this, barX, startY + spacing * 2, barWidth, barHeight, this.config.initialValues.opinion, this.publicOpinion, 'Opinion', 0xffff00);
-    this.riskBar = new ResourceBar(this, barX, startY + spacing * 3, barWidth, barHeight, this.config.limits.maxRisk, this.risk, 'Risk', 0xff0000);
-    this.researchBar = new ResourceBar(this, barX, startY + spacing * 4, barWidth, barHeight, this.config.limits.researchNeeded, this.researchPoints, 'Research', 0x00ffff);
-
-    // Instructions / status text
-    this.infoText = this.add.text(
-      barX, 
-      startY + spacing * 6, 
-      '', // Initialize with empty text
-      this.textStyleInfo
-    );
-    
-    // Set initial instruction message
-    this.setInfoText('Choose an action for this turn.');
-
-    // Create main action buttons using our reusable component
-    this.createMainButtons(isLandscape);
-    
-    // Update resource displays
-    this.updateResourceDisplay();
   }
   
   /**
-   * Handle window resize events
+   * Create a consistent ResourceBar with standard styling
    */
-  handleResize() {
-    // Stop all tweens and input events
-    this.tweens.killAll();
+  private createResourceBar(
+    x: number, 
+    y: number, 
+    width: number, 
+    value: number, 
+    maxValue: number, 
+    label: string, 
+    color: number,
+    tooltipText?: string
+  ): ResourceBar {
+    return new ResourceBar(
+      this,
+      x,
+      y,
+      width,
+      GameScene.LAYOUT.RESOURCE_HEIGHT,
+      value,
+      maxValue,
+      label,
+      color,
+      tooltipText
+    );
+  }
+  
+  /**
+   * Create a consistent Button with standard styling
+   */
+  private createButton(
+    x: number, 
+    y: number, 
+    text: string, 
+    callback: () => void,
+    isOption: boolean = false,
+    style: keyof typeof BUTTON_STYLES = 'DEFAULT'
+  ): Button {
+    return new Button(
+      this, 
+      x, 
+      y, 
+      text, 
+      callback, 
+      { preset: style, isOption }
+    );
+  }
+  
+  /**
+   * Create a consistent separator line
+   */
+  private createSeparator(
+    x: number, 
+    y: number, 
+    width: number, 
+    color: number = 0xffffff,
+    alpha: number = 0.3
+  ): Phaser.GameObjects.Rectangle {
+    return this.add.rectangle(
+      x,
+      y,
+      width,
+      GameScene.LAYOUT.SEPARATOR_HEIGHT,
+      color,
+      alpha
+    ).setOrigin(0, 0);
+  }
+  
+  /**
+   * Create a consistent text element
+   */
+  private createText(
+    x: number, 
+    y: number, 
+    text: string, 
+    style: Phaser.Types.GameObjects.Text.TextStyle = {}
+  ): Phaser.GameObjects.Text {
+    // Get layout parameters
+    const layout = this.getLayoutParams();
     
-    // Clean up all elements
-    this.children.list.forEach(child => {
-      if (child.destroy) {
+    // Create default style
+    const defaultStyle: Phaser.Types.GameObjects.Text.TextStyle = {
+      fontSize: layout.isMobile ? '20px' : '16px',
+      color: '#fff',
+      wordWrap: { width: layout.gameWidth * GameScene.LAYOUT.TEXT_WRAP_PERCENT }
+    };
+    
+    // Merge with custom style
+    const mergedStyle = { ...defaultStyle, ...style };
+    
+    return this.add.text(x, y, text, mergedStyle);
+  }
+  
+  /**
+   * Formats a value with prefix when positive
+   * @param value The value to format
+   * @param prefix Optional prefix for positive values (default '+')
+   * @returns Formatted string
+   */
+  private formatWithSign(value: number, prefix: string = '+'): string {
+    return value > 0 ? `${prefix}${value}` : `${value}`;
+  }
+  
+  /**
+   * Builds formatted effect message text from an effects object
+   * @param effects Object containing effect values
+   * @returns Formatted effects message
+   */
+  private buildEffectsMessage(effects: {
+    knowledge?: number | null;
+    money?: number | null;
+    publicOpinion?: number | null;
+    seismicRisk?: number | null;
+  }): string {
+    const messageEffects: string[] = [];
+    
+    // Properly check knowledge effect (null, undefined, and zero checks)
+    if (effects.knowledge !== undefined && effects.knowledge !== null && effects.knowledge !== 0) {
+      messageEffects.push(`Knowledge ${this.formatWithSign(effects.knowledge)}`);
+    }
+    
+    // Properly check money effect (null, undefined, and zero checks)
+    if (effects.money !== undefined && effects.money !== null && effects.money !== 0) {
+      messageEffects.push(`Money ${this.formatWithSign(effects.money, '+$')}`);
+    }
+    
+    // Properly check opinion effect (null, undefined, and zero checks)
+    if (effects.publicOpinion !== undefined && effects.publicOpinion !== null && effects.publicOpinion !== 0) {
+      messageEffects.push(`Opinion ${this.formatWithSign(effects.publicOpinion)}`);
+    }
+    
+    // Properly check risk effect (null, undefined, and zero checks)
+    if (effects.seismicRisk !== undefined && effects.seismicRisk !== null && effects.seismicRisk !== 0) {
+      messageEffects.push(`Risk ${this.formatWithSign(effects.seismicRisk)}`);
+    }
+    
+    return messageEffects.length > 0 ? ` (${messageEffects.join(', ')})` : '';
+  }
+  
+  /**
+   * Cleans up all game objects marked with a specific data tag
+   * 
+   * This method is a central part of the UI cleanup system. It searches through
+   * all child objects in the scene and destroys any that have been tagged with
+   * the specified data property (typically 'isOption').
+   * 
+   * Usage:
+   * - Used by clearActionOptions() to remove temporary UI elements
+   * - Called directly when transitioning between UI states
+   * - The 'isOption' tag is commonly used to mark elements for cleanup
+   * 
+   * The tagging system allows for targeted cleanup of temporary UI elements
+   * without affecting permanent UI components.
+   * 
+   * @param tag The data property name to check for (e.g., 'isOption')
+   */
+  private cleanupGameObjectsByTag(tag: string): void {
+    const childrenToCheck = [...this.children.list];
+    
+    childrenToCheck.forEach(child => {
+      if (child.getData && child.getData(tag)) {
         child.destroy();
       }
     });
+  }
+
+  create() {
+    // Reset passive rewards tracking
+    this.passiveRewardsApplied = false;
     
-    // Small delay to ensure clean rebuild
-    this.time.delayedCall(50, () => {
-      // Reinitialize UI components with new dimensions
-      this.initUI();
+    // Get layout parameters based on device
+    const layout = this.getLayoutParams();
+    
+    // Calculate positions
+    const basePosX = layout.mainX;
+    const basePosY = layout.mainY;
+    const spacing = GameScene.LAYOUT.SPACING;
+    const resourceWidth = layout.resourceWidth;
+    
+    // Initialize UI components
+    // Resource bars with tooltips
+    this.moneyBar = this.createResourceBar(
+      basePosX, 
+      basePosY, 
+      resourceWidth, 
+      this.money, 
+      this.config.maxValues.money, 
+      'Money', 
+      GameScene.COLORS.MONEY,
+      'Your available funds for research and community engagement.'
+    );
+    
+    this.riskBar = this.createResourceBar(
+      basePosX, 
+      basePosY + spacing + GameScene.LAYOUT.RESOURCE_HEIGHT, 
+      resourceWidth, 
+      this.risk, 
+      this.config.maxValues.risk, 
+      'Seismic Risk', 
+      GameScene.COLORS.RISK,
+      'Risk of seismic activity. Higher risk increases chance of negative events.'
+    );
+    
+    this.opinionBar = this.createResourceBar(
+      basePosX, 
+      basePosY + (spacing + GameScene.LAYOUT.RESOURCE_HEIGHT) * 2, 
+      resourceWidth, 
+      this.publicOpinion, 
+      this.config.maxValues.opinion, 
+      'Public Opinion', 
+      GameScene.COLORS.POSITIVE,
+      'Public support for your project. Affects funding and event outcomes.'
+    );
+
+    // Research points bar
+    this.researchBar = this.createResourceBar(
+      basePosX, 
+      basePosY + (spacing + GameScene.LAYOUT.RESOURCE_HEIGHT) * 3, 
+      resourceWidth, 
+      this.researchPoints, 
+      this.config.maxValues.research, 
+      'Research Points', 
+      GameScene.COLORS.NEUTRAL,
+      'Scientific knowledge gained. Affects project success and unlocks new options.'
+    );
+    
+    this.turnsBar = this.createResourceBar(
+      basePosX, 
+      basePosY + (spacing + GameScene.LAYOUT.RESOURCE_HEIGHT) * 4, 
+      resourceWidth, 
+      this.turnsRemaining, 
+      this.config.initialValues.turns, 
+      'Turns Remaining', 
+      GameScene.COLORS.INFO,
+      'Time remaining to complete your project. Game ends when this reaches zero.'
+    );
+    
+    // Title and information area
+    this.createSeparator(
+      basePosX, 
+      this.turnsBar ? this.turnsBar.getY() + this.turnsBar.getHeight() + spacing : basePosY + (spacing + GameScene.LAYOUT.RESOURCE_HEIGHT) * 5, 
+      resourceWidth
+    );
+    
+    // Information text area with padding
+    const infoTextY = this.turnsBar ? this.turnsBar.getY() + this.turnsBar.getHeight() + spacing * 2 : basePosY + (spacing + GameScene.LAYOUT.RESOURCE_HEIGHT) * 5 + spacing * 2;
+    this.infoText = this.createText(
+      basePosX, 
+      infoTextY,
+      `Turn ${this.turn}: Select an action or press Next Turn to continue.`,
+      { 
+        fontSize: layout.isMobile ? '16px' : '14px',
+        color: '#ffffff',
+        wordWrap: { width: resourceWidth } 
+      }
+    );
+    
+    // Create action buttons
+    this.createMainButtons(layout.isLandscape);
+    
+    // Listen for resize events with debouncing
+    const debouncedResize = this.debounceEvent(this.updateUIForResize.bind(this), 250);
+    this.scale.on('resize', debouncedResize);
+    
+    // Ensure this is properly cleaned up when the scene shuts down
+    this.events.once('shutdown', () => {
+      this.scale.off('resize', debouncedResize);
     });
+  }
+  
+  /**
+   * Create the main game action buttons
+   * @param _isLandscape Whether the screen is in landscape mode (not directly used but kept for API consistency)
+   */
+  private createMainButtons(_isLandscape: boolean) {
+    // Get layout parameters 
+    const layout = this.getLayoutParams();
+    const { mainX, mainY, resourceWidth } = layout;
+    const spacing = GameScene.LAYOUT.SPACING;
+    
+    // Calculate button positions
+    const buttonAreaY = this.infoText 
+      ? this.infoText.y + GameScene.LAYOUT.INFO_HEIGHT 
+      : mainY + (GameScene.LAYOUT.RESOURCE_HEIGHT + spacing) * 5 + spacing * 3;
+    
+    // Create separator above buttons
+    this.createSeparator(mainX, buttonAreaY - spacing, resourceWidth);
+    
+    // First row of buttons
+    const buttonsY = buttonAreaY + spacing;
+    
+    // Create theoretical research button
+    this.createButton(
+      mainX, 
+      buttonsY, 
+      'Theoretical Research', 
+      this.showTheoreticalResearchOptions.bind(this),
+      false, // Not an option button (permanent UI)
+      'PRIMARY' // Style preset
+    );
+    
+    // Create practical research button
+    this.createButton(
+      mainX + GameScene.LAYOUT.BUTTON_WIDTH + spacing, 
+      buttonsY, 
+      'Practical Research', 
+      this.showPracticalResearchOptions.bind(this),
+      false, // Not an option button (permanent UI)
+      'PRIMARY' // Style preset
+    );
+    
+    // Second row of buttons
+    const secondRowY = buttonsY + GameScene.LAYOUT.BUTTON_HEIGHT + spacing;
+    
+    // Create community engagement button
+    this.createButton(
+      mainX, 
+      secondRowY, 
+      'Community Engagement', 
+      this.showCommunityEngagementOptions.bind(this),
+      false, // Not an option button (permanent UI)
+      'PRIMARY' // Style preset
+    );
+    
+    // Create next turn button
+    this.createButton(
+      mainX + GameScene.LAYOUT.BUTTON_WIDTH + spacing, 
+      secondRowY, 
+      'Next Turn', 
+      this.handleNextTurn.bind(this),
+      false, // Not an option button (permanent UI)
+      'SUCCESS' // Style preset
+    );
+    
+    // Set up debounced resize handler for all screen sizes
+    this.resizeHandler = this.debounceEvent(this.updateUIForResize.bind(this), 250);
+    this.scale.on('resize', this.resizeHandler, this);
+  }
+  
+  /**
+   * Helper method to update UI elements when screen is resized
+   */
+  updateUIForResize() {
+    // Calculate new layout parameters
+    const layout = this.getLayoutParams();
+    const { mainX, mainY, resourceWidth } = layout;
+    
+    // Update resource bar positions and widths
+    if (this.moneyBar) {
+      this.moneyBar.setPosition(mainX, mainY);
+      this.moneyBar.setWidth(resourceWidth);
+    }
+    
+    if (this.riskBar) {
+      this.riskBar.setPosition(mainX, mainY + GameScene.LAYOUT.RESOURCE_HEIGHT + GameScene.LAYOUT.SPACING);
+      this.riskBar.setWidth(resourceWidth);
+    }
+    
+    if (this.opinionBar) {
+      this.opinionBar.setPosition(
+        mainX, 
+        mainY + (GameScene.LAYOUT.RESOURCE_HEIGHT + GameScene.LAYOUT.SPACING) * 2
+      );
+      this.opinionBar.setWidth(resourceWidth);
+    }
+    
+    if (this.researchBar) {
+      this.researchBar.setPosition(
+        mainX, 
+        mainY + (GameScene.LAYOUT.RESOURCE_HEIGHT + GameScene.LAYOUT.SPACING) * 3
+      );
+      this.researchBar.setWidth(resourceWidth);
+    }
+    
+    if (this.turnsBar) {
+      this.turnsBar.setPosition(
+        mainX, 
+        mainY + (GameScene.LAYOUT.RESOURCE_HEIGHT + GameScene.LAYOUT.SPACING) * 4
+      );
+      this.turnsBar.setWidth(resourceWidth);
+    }
+    
+    // Clear and recreate only the action buttons (not the entire UI)
+    this.clearActionOptions();
+    this.createMainButtons(layout.isLandscape);
   }
 
   updateResourceDisplay() {
     // Update resource bar values
-    this.moneyBar.setValue(this.money);
-    this.turnsBar.setValue(this.turnsRemaining);
-    this.opinionBar.setValue(this.publicOpinion);
-    this.riskBar.setValue(this.risk);
-    this.researchBar.setValue(this.researchPoints);
+    if (this.moneyBar) {
+      this.moneyBar.setValue(Math.max(0, this.money));
+    }
+    
+    if (this.riskBar) {
+      this.riskBar.setValue(Math.max(0, Math.min(this.risk, this.config.maxValues.risk)));
+    }
+    
+    if (this.opinionBar) {
+      this.opinionBar.setValue(Math.max(0, Math.min(this.publicOpinion, this.config.maxValues.opinion)));
+    }
+    
+    if (this.researchBar) {
+      this.researchBar.setValue(Math.max(0, Math.min(this.researchPoints, this.config.maxValues.research)));
+    }
+    
+    if (this.turnsBar) {
+      this.turnsBar.setValue(Math.max(0, this.turnsRemaining));
+    }
   }
   
   /**
-   * Centralized helper for managing info text updates
-   * @param message Primary message to display
-   * @param append Whether to append or replace existing text
-   * @param type Optional message type for styling (normal, warning, success)
+   * Set the info text with optional animation and color
+   * @param message The message to display
+   * @param animate Whether to animate the text change
+   * @param style Optional style: 'success', 'warning', 'error'
    */
-  setInfoText(message: string, append: boolean = false, type: 'normal' | 'warning' | 'success' = 'normal') {
-    // Apply any styling based on message type
-    let coloredMessage = message;
-    switch (type) {
-      case 'warning':
-        coloredMessage = `💢 ${message}`; // Visual indicator for warnings
-        break;
+  setInfoText(message: string, animate: boolean = false, style: string = 'normal') {
+    if (!this.infoText) return;
+    
+    // Set color based on style
+    let color = '#ffffff';
+    switch (style) {
       case 'success':
-        coloredMessage = `✅ ${message}`; // Visual indicator for success
+        color = '#2ecc71';
         break;
-      default:
+      case 'warning':
+        color = '#f39c12';
+        break;
+      case 'error':
+        color = '#e74c3c';
         break;
     }
     
-    // Either append or replace text based on the append parameter
-    if (append && this.infoText.text) {
-      this.infoText.setText(`${this.infoText.text}\n${coloredMessage}`);
-    } else {
-      this.infoText.setText(coloredMessage);
+    this.infoText.setColor(color);
+    
+    if (animate) {
+      // Save original scale
+      const originalScale = this.infoText.scale;
+      
+      // Scale up slightly and back down for emphasis
+      this.tweens.add({
+        targets: this.infoText,
+        scale: originalScale * 1.1,
+        duration: 150,
+        yoyo: true,
+        onComplete: () => {
+          this.infoText?.setScale(originalScale);
+        }
+      });
     }
+    
+    // Update the text
+    this.infoText.setText(message);
   }
   
   /**
-   * Helper to check if an action is affordable
-   * @param cost Money cost of the action
-   * @param timeRequired Time/turns required for the action
-   * @returns Boolean indicating whether the action can be afforded
+   * Helper for debouncing events like window resize
+   * @param fn Function to debounce
+   * @param delay Delay in ms
+   * @returns Debounced function
    */
-  canAffordAction(cost: number, timeRequired: number): boolean {
-    return this.money >= cost && this.turnsRemaining >= timeRequired;
-  }
-  
-  /**
-   * Create main action buttons using the Button component
-   * @param isLandscape Whether the layout is landscape or portrait
-   */
-  createMainButtons(isLandscape: boolean) {
-    // Get screen dimensions for responsive layout
-    const gameWidth = this.scale.width;
-    const gameHeight = this.scale.height;
-    const isMobile = gameWidth < 768;
-    
-    // Calculate button positions
-    let buttonStartY, buttonSpacing;
-    const startY = 20;
-    const spacing = isMobile ? 20 : 25;
-    const barX = isMobile ? gameWidth * 0.05 : Math.max(50, gameWidth * 0.1); // Match action option spacing
-    
-    if (isMobile) {
-      if (isLandscape) {
-        // Landscape mobile: buttons on right side
-        buttonStartY = startY;
-        buttonSpacing = 80; // Larger touch targets
-      } else {
-        // Portrait mobile: buttons at bottom
-        buttonStartY = Math.min(startY + spacing * 8, gameHeight * 0.6);
-        buttonSpacing = 90; // Even larger touch targets for portrait mode
+  private debounceEvent(fn: (scene: Phaser.Scene, width: number, height: number) => void, delay: number) {
+    return ((scene: Phaser.Scene, width: number, height: number) => {
+      if (this.resizeTimeoutId !== null) {
+        clearTimeout(this.resizeTimeoutId);
       }
-    } else {
-      // Desktop layout
-      buttonStartY = startY + spacing * 8;
-      buttonSpacing = 50;
-    }
-    
-    // Add a separator line above the buttons for visual clarity
-    this.add.graphics()
-      .lineStyle(2, 0x666666, 0.8)
-      .lineBetween(barX, buttonStartY - 20, barX + gameWidth * 0.8, buttonStartY - 20);
-    
-    // Create action buttons with optimized layout for orientation
-    if (isMobile && isLandscape) {
-      // Landscape layout: buttons on right side
-      const rightSideX = gameWidth * 0.6;
-      
-      // Use our reusable Button component
-      new Button(
-        this,
-        rightSideX,
-        buttonStartY,
-        'Theoretical Research',
-        () => this.showTheoreticalResearchOptions()
-      );
-      
-      new Button(
-        this,
-        rightSideX,
-        buttonStartY + buttonSpacing,
-        'Practical Research',
-        () => this.showPracticalResearchOptions()
-      );
-      
-      new Button(
-        this,
-        rightSideX,
-        buttonStartY + buttonSpacing * 2,
-        'Public Engagement',
-        () => this.showCommunityEngagementOptions()
-      );
-    } else {
-      // Portrait or desktop layout: buttons stacked vertically
-      new Button(
-        this,
-        barX,
-        buttonStartY,
-        'Theoretical Research',
-        () => this.showTheoreticalResearchOptions()
-      );
-      
-      new Button(
-        this,
-        barX,
-        buttonStartY + buttonSpacing,
-        'Practical Research',
-        () => this.showPracticalResearchOptions()
-      );
-      
-      new Button(
-        this,
-        barX,
-        buttonStartY + buttonSpacing * 2,
-        'Public Engagement',
-        () => this.showCommunityEngagementOptions()
-      );
-    }
+      this.resizeTimeoutId = window.setTimeout(() => {
+        fn.call(this, scene, width, height);
+        this.resizeTimeoutId = null;
+      }, delay);
+    });
   }
-
+  
   /**
-   * Create action options with the ActionOption component
+   * Check if player can afford the action based on money and time
+   * @param cost Money cost
+   * @param time Time cost in turns
+   * @returns Whether the player can afford the action
+   */
+  private canAffordAction(cost: number, time: number): boolean {
+    return this.money >= cost && this.turnsRemaining >= time;
+  }
+  
+  /**
+   * Create action options display with consistent layout
    * @param actions Array of action data
-   * @param callback Function to call when an action is selected
-   * @returns Object with layout data for back button positioning
+   * @param callback Function to call when an option is selected
    */
   createActionOptions<T extends ActionData>(actions: T[], callback: (action: T) => void) {
     // Clear any existing options first
     this.clearActionOptions();
     
-    // Get screen dimensions for responsive layout
-    const gameWidth = this.scale.width;
-    const gameHeight = this.scale.height;
-    const isMobile = gameWidth < 768;
-    const isLandscape = gameWidth > gameHeight;
+    // Get layout parameters
+    const layout = this.getLayoutParams();
     
     // Determine layout based on screen size and orientation
-    let yPos, xPos, spacing;
+    const isHorizontal = layout.isLandscape && !layout.isMobile;
+    const optionSpacing = GameScene.LAYOUT.SPACING * 1.5;
     
-    if (isMobile) {
-      if (isLandscape) {
-        // Landscape mobile layout
-        yPos = 120;
-        xPos = Math.max(30, gameWidth * 0.05);
-        spacing = 80; // Larger touch targets for mobile
-      } else {
-        // Portrait mobile layout
-        yPos = 200;
-        // Ensure there's enough space from the left edge
-        xPos = Math.max(30, gameWidth * 0.1); 
-        spacing = 110; // Even larger spacing for portrait
+    // Show a maximum of 3 options at a time
+    const maxVisibleOptions = 3;
+    const visibleActions = actions.slice(0, maxVisibleOptions);
+    
+    // Calculate action option positions
+    const actionPosX = layout.mainX;
+    const actionPosY = this.infoText 
+      ? this.infoText.y + GameScene.LAYOUT.INFO_HEIGHT + optionSpacing 
+      : layout.mainY + 250;
+    
+    // Create title
+    this.createText(
+      actionPosX,
+      actionPosY - 30,
+      'Select an action:',
+      { 
+        fontSize: layout.isMobile ? '20px' : '18px',
+        fontStyle: 'bold'
       }
-    } else {
-      // Desktop layout
-      yPos = 250;
-      xPos = Math.max(50, gameWidth * 0.1); // Increase margin on desktop
-      spacing = 80;
-    }
+    ).setData('isOption', true);
     
-    // Ensure options don't go off-screen by setting a reasonable margin
-    // Keep at least 10% margin from screen edges
-    
-    // Create action options for each action, limiting to 3 visible at a time if there are many
-    // This prevents off-screen options
-    const maxVisibleOptions = 3; // Limits scrolling somewhat
-    const displayActions = actions.slice(0, maxVisibleOptions);
-    
-    displayActions.forEach((action, index) => {
-      // Create the ActionOption component with proper positioning
+    // Loop through actions and create options
+    visibleActions.forEach((action, index) => {
+      const currentY = actionPosY + (index * (isHorizontal ? 75 : 120));
       const actionOption = new ActionOption(
         this,
-        xPos,
-        yPos + index * spacing,
+        actionPosX,
+        currentY,
         action,
-        () => {
-          // Let the action method handle validation
-          callback(action);
-        },
-        isLandscape // Use horizontal layout in landscape mode
+        () => callback(action),
+        isHorizontal
       );
       
-      // Ensure it's properly marked for cleanup - sometimes the container mark isn't visible to all cleanup
+      // Mark for cleanup
       actionOption.setData('isOption', true);
     });
     
-    // Return layout data for back button positioning
+    // Return layout info for positioning back button
     return {
-      xPos,
-      yPos,
-      spacing,
-      actionCount: Math.min(displayActions.length, maxVisibleOptions)
+      xPos: actionPosX,
+      yPos: actionPosY,
+      spacing: isHorizontal ? 75 : 120,
+      actionCount: visibleActions.length
     };
   }
-
+  
   /**
-   * Generic method to display action options for the player to select
-   * @param options Array of action options to display
-   * @param actionCallback Callback function when an option is selected
+   * Show action options for the player to select
+   * @param options Array of action data
+   * @param actionCallback Function to call when an action is selected
    */
-  private showActionOptions<T extends ActionData>(
-    options: T[],
-    actionCallback: (option: T) => void
-  ) {
-    // Create options using our reusable component
+  showActionOptions<T extends ActionData>(options: T[], actionCallback: (action: T) => void) {
+    // Create option display
     const layout = this.createActionOptions(options, actionCallback);
     
-    // Get screen dimensions
-    const gameWidth = this.scale.width;
-    const gameHeight = this.scale.height;
-    const isMobile = gameWidth < 768;
+    // Get layout parameters
+    const { gameHeight, isMobile } = this.getLayoutParams();
     
     // Make sure back button is accessible and always on screen
     // Use a position that's safely within the viewport
@@ -432,9 +674,8 @@ export class GameScene extends Phaser.Scene {
       gameHeight - 60 // Keep button at least 60px from bottom
     );
     
-    // Create back button using Button component
-    const backButton = new Button(
-      this,
+    // Create back button using our helper method
+    this.createButton(
       layout.xPos,
       backButtonY,
       'Back',
@@ -444,56 +685,60 @@ export class GameScene extends Phaser.Scene {
           this.clearActionOptions();
         });
       },
-      { 
-        backgroundColor: 0x333333, // Darker to stand out
-        padding: { left: 20, right: 20, top: 10, bottom: 10 } // Smaller padding
-      }
+      true, // Mark as an option for cleanup
+      'BACK' // Use the BACK style preset
     );
+  }
+  
+  /**
+   * Show game options of a specific type
+   * @param optionType The type of options to show
+   */
+  showGameOptions(optionType: 'research-theoretical' | 'research-practical' | 'community') {
+    let actionData: ActionData[] = [];
     
-    // Explicitly mark for cleanup
-    backButton.setData('isOption', true);
+    // Determine which data to show based on type
+    switch (optionType) {
+      case 'research-theoretical':
+        actionData = researchTheoretical;
+        break;
+      case 'research-practical':
+        actionData = researchPractical;
+        break;
+      case 'community':
+        actionData = communityEngagement;
+        break;
+    }
+    
+    // Show options using our generic action handler
+    this.showActionOptions(actionData, this.doAction.bind(this));
   }
   
-  /**
-   * Display theoretical research options for the player to select
-   */
-  showTheoreticalResearchOptions() {
-    this.showActionOptions(researchTheoretical, this.doTheoreticalResearch.bind(this));
-  }
+  // Alias methods for backward compatibility with existing bindings
+  showTheoreticalResearchOptions = () => this.showGameOptions('research-theoretical');
+  showPracticalResearchOptions = () => this.showGameOptions('research-practical');
+  showCommunityEngagementOptions = () => this.showGameOptions('community');
   
   /**
-   * Display practical research options for the player to select
-   */
-  showPracticalResearchOptions() {
-    this.showActionOptions(researchPractical, this.doPracticalResearch.bind(this));
-  }
-  
-  /**
-   * Display community engagement options for the player to select
-   */
-  showCommunityEngagementOptions() {
-    this.showActionOptions(communityEngagement, this.doCommunityEngagement.bind(this));
-  }
-  
-  /**
-   * Clear all action option buttons and text
+   * Clear all temporary UI elements marked with the 'isOption' tag
+   * 
+   * This method is called to remove action option menus and temporary UI elements
+   * when:
+   * - The player returns to the main menu
+   * - The player selects an action
+   * - A new UI state is created that requires clearing previous options
+   * - The turn ends and UI is reset
+   * 
+   * It uses the cleanupGameObjectsByTag method to find and destroy all game objects
+   * that have been marked with the 'isOption' data tag, ensuring efficient cleanup
+   * of temporary UI components while preserving permanent UI elements.
    */
   clearActionOptions() {
-    // Create a copy of the children list to avoid modification during iteration
-    const childrenToCheck = [...this.children.list];
+    // Use helper to clean up all options
+    this.cleanupGameObjectsByTag('isOption');
     
-    // Destroy any existing option buttons
-    childrenToCheck.forEach(child => {
-      // Check if it's a button created for options (not our main action buttons)
-      if (child.getData && child.getData('isOption')) {
-        child.destroy();
-      }
-    });
-    
-    // Get screen dimensions for responsive layout
-    const gameWidth = this.scale.width;
-    const gameHeight = this.scale.height;
-    const isLandscape = gameWidth > gameHeight;
+    // Get layout parameters
+    const { isLandscape } = this.getLayoutParams();
     
     // Recreate the main button layout using our reusable component
     this.createMainButtons(isLandscape);
@@ -514,7 +759,12 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     
-    // Destroy any option elements before moving on
+    /**
+     * Destroy any option elements before applying the action effects
+     * This direct approach is used here for immediate cleanup during action performance
+     * rather than using clearActionOptions() which would also recreate main buttons
+     * The 'isOption' tag identifies temporary UI components created during option selection
+     */
     this.children.list.forEach(child => {
       if (child.getData('isOption')) {
         child.destroy();
@@ -525,13 +775,37 @@ export class GameScene extends Phaser.Scene {
     this.money -= action.cost;
     this.turnsRemaining -= action.timeRequired;
     
-    // Apply all effects - now all properties exist on all actions
-    this.risk += action.effects.seismicRisk;
-    this.publicOpinion += action.effects.publicOpinion;
-    this.researchPoints += action.effects.knowledge;
-    this.money += action.effects.money;
+    // Apply all effects with defensive null checks to handle any missing properties
+    if (action.effects) {
+      // Seismic risk effect (with null/undefined check)
+      this.risk += action.effects.seismicRisk !== undefined && action.effects.seismicRisk !== null
+        ? action.effects.seismicRisk 
+        : 0;
+      
+      // Public opinion effect (with null/undefined check)
+      this.publicOpinion += action.effects.publicOpinion !== undefined && action.effects.publicOpinion !== null
+        ? action.effects.publicOpinion 
+        : 0;
+      
+      // Research/knowledge effect (with null/undefined check)
+      this.researchPoints += action.effects.knowledge !== undefined && action.effects.knowledge !== null
+        ? action.effects.knowledge 
+        : 0;
+      
+      // Money effect (with null/undefined check) - separate from the initial cost
+      this.money += action.effects.money !== undefined && action.effects.money !== null
+        ? action.effects.money 
+        : 0;
+    }
     
-    this.setInfoText(`Conducted ${action.name.en} this turn.`, false, 'success');
+    // Build feedback message to show important effects using our helper with safe access
+    const effectsText = this.buildEffectsMessage({
+      knowledge: action.effects && action.effects.knowledge !== undefined ? action.effects.knowledge : null,
+      money: action.effects && action.effects.money !== undefined ? action.effects.money : null,
+      publicOpinion: action.effects && action.effects.publicOpinion !== undefined ? action.effects.publicOpinion : null,
+      seismicRisk: action.effects && action.effects.seismicRisk !== undefined ? action.effects.seismicRisk : null
+    });
+    this.setInfoText(`Conducted ${action.name.en} this turn.${effectsText}`, false, 'success');
     // Don't call clearActionOptions again since we already destroyed all option items
     this.createMainButtons(this.scale.width > this.scale.height);
     this.endTurn();
@@ -575,10 +849,56 @@ export class GameScene extends Phaser.Scene {
     const eventOccurs = forcedEvent || (!blockEvent && Math.random() * 100 < eventChance);
     
     if (eventOccurs) {
-      // Select a random event from the events array based on game state
-      let possibleEvents = [...events];
+      // Select events based on the current game state using the weighted algorithm
+      let possibleEvents: GameEvent[] = [];
       
-      // Filter events that would be too punishing if money/turns are low
+      // Calculate event weights based on game state
+      const weights = {
+        seismic: 1,
+        community: 1,
+        financial: 1,
+        environmental: 1,
+        regulatory: 1
+      };
+      
+      // Adjust weights based on risk level
+      if (this.risk >= this.config.events.bigEventThreshold) {
+        // Significantly increase seismic event probability when risk is high
+        weights.seismic = 3;
+        weights.regulatory = 2;
+      } else if (this.risk >= this.config.effects.highRiskThreshold) {
+        // Moderately increase seismic event probability for medium risk
+        weights.seismic = 2;
+      }
+      
+      // Adjust weights based on public opinion
+      if (this.publicOpinion < 40) {
+        // More community events when public opinion is low
+        weights.community = 2;
+      }
+      
+      // Adjust weights based on financial situation
+      if (this.money < 50) {
+        // More financial events when money is low
+        weights.financial = 2;
+      }
+      
+      // Get weighted event pool
+      possibleEvents = getWeightedEvents(weights);
+      
+      // Add high-impact events for increased selection probability when risk is high
+      if (this.risk >= this.config.events.bigEventThreshold) {
+        const highImpactEvents = events.filter(event => 
+          (event.effects.publicOpinion && event.effects.publicOpinion < -10) || 
+          (event.effects.money && event.effects.money < -30)
+        );
+        
+        // Add high impact events to increase their selection probability
+        possibleEvents = [...possibleEvents, ...highImpactEvents];
+      }
+      
+      // Apply filters for player protection
+      // Filter out too-punishing events if money/turns are low
       if (this.money < 50) {
         possibleEvents = possibleEvents.filter(event => 
           !event.effects.money || event.effects.money > -20);
@@ -589,31 +909,28 @@ export class GameScene extends Phaser.Scene {
           !event.effects.time || event.effects.time === 0);
       }
       
-      // Enable more severe events when risk is very high
-      if (this.risk >= this.config.events.bigEventThreshold) {
-        // Add weight to more impactful events by doubling their chance of selection
-        const highImpactEvents = possibleEvents.filter(event => 
-          (event.effects.publicOpinion && event.effects.publicOpinion < -10) || 
-          (event.effects.money && event.effects.money < -30)
-        );
-        
-        // Add high impact events again to increase their selection probability
-        possibleEvents = [...possibleEvents, ...highImpactEvents];
-      }
-      
-      // If we had an event last turn, slightly favor more moderate events
+      // If we had an event last turn, favor more moderate events
       // to avoid overwhelming the player with consecutive severe impacts
       if (this.hadEventLastTurn) {
-        // Remove the most severe events from the pool (using standardized structure)
         possibleEvents = possibleEvents.filter(event => 
           event.effects.publicOpinion >= -15 && 
           event.effects.money >= -40
         );
       }
       
-      // If no events match the filters, use the full list
+      // If no events match the filters, fall back to a safer subset
       if (possibleEvents.length === 0) {
-        possibleEvents = [...events];
+        // Use events with minimal negative impact as a fallback
+        possibleEvents = events.filter(event => 
+          event.effects.publicOpinion > -10 && 
+          event.effects.money > -15 &&
+          event.effects.time === 0
+        );
+        
+        // If still empty, use all events as a last resort
+        if (possibleEvents.length === 0) {
+          possibleEvents = [...events];
+        }
       }
       
       // Select a random event from the filtered list
@@ -666,214 +983,177 @@ export class GameScene extends Phaser.Scene {
       this.setInfoText(`Public is worried about seismic risk. Opinion -${this.config.effects.highRiskOpinionLoss}.`, true, 'warning');
     }
   }
-
-  /**
-   * Calculate a score based on remaining resources and achievements
-   * This creates a more nuanced outcome than simple win/lose
-   * @returns A score object with total and breakdown
-   */
-  calculateGameScore() {
-    // Base scoring components
-    const researchScore = Math.floor((this.researchPoints / this.config.limits.researchNeeded) * 100);
-    const opinionScore = Math.floor((this.publicOpinion / this.config.initialValues.opinion) * 50);
-    const riskScore = Math.max(0, 30 - Math.floor((this.risk / this.config.limits.maxRisk) * 30));
-    const moneyScore = Math.min(30, Math.floor((this.money / this.config.initialValues.money) * 30));
-    const timeScore = this.turnsRemaining > 0 ? Math.min(20, this.turnsRemaining * 3) : 0;
-    
-    // Research progress bonuses (even for losses)
-    let bonusScore = 0;
-    const researchProgress = this.researchPoints / this.config.limits.researchNeeded;
-    
-    // Research progress thresholds
-    if (researchProgress >= 0.25) bonusScore += 5;  // 25% complete
-    if (researchProgress >= 0.5) bonusScore += 10;  // 50% complete
-    if (researchProgress >= 0.75) bonusScore += 15; // 75% complete
-    if (researchProgress >= 1) bonusScore += 25;    // 100% complete (major bonus)
-    
-    // Calculate total score
-    const totalScore = researchScore + opinionScore + riskScore + moneyScore + timeScore + bonusScore;
-    
-    // Return score breakdown for display
-    return {
-      total: totalScore,
-      research: researchScore,
-      opinion: opinionScore,
-      risk: riskScore,
-      money: moneyScore,
-      time: timeScore,
-      bonus: bonusScore,
-      maxPossible: 255 // 100+50+30+30+20+25
-    };
-  }
   
   /**
-   * Determine outcome category based on score and game state
-   * @param score The calculated game score
-   * @returns An outcome object with type, title, description and rating
+   * Check if the game is over
+   * @returns Whether the game is over
    */
-  determineGameOutcome(score: { 
-    total: number,
-    maxPossible: number,
-    research: number,
-    opinion: number,
-    risk: number,
-    money: number,
-    time: number,
-    bonus: number
-  }) {
-    // Basic parameters
-    const researchComplete = this.researchPoints >= this.config.limits.researchNeeded;
-    const scorePercent = Math.floor((score.total / score.maxPossible) * 100);
-    
-    // Outcome categories with descriptions
-    const outcome = {
-      type: 'neutral',      // win, lose, partial, special
-      title: '',            // Short heading
-      description: '',      // Longer explanation
-      rating: '',           // A-F or special rating
-      score: score.total,   // Numeric score
-      scorePercent         // Percentage score
-    };
-    
-    // Determine rating based on score percentage
-    if (scorePercent >= 90) outcome.rating = 'A+';
-    else if (scorePercent >= 80) outcome.rating = 'A';
-    else if (scorePercent >= 70) outcome.rating = 'B';
-    else if (scorePercent >= 60) outcome.rating = 'C';
-    else if (scorePercent >= 50) outcome.rating = 'D';
-    else outcome.rating = 'F';
-    
-    // Special failure conditions
-    if (this.publicOpinion <= 0) {
-      outcome.type = 'lose';
-      outcome.title = 'Project Cancelled';
-      outcome.description = 'Public opposition has shut down your project. Your failure to maintain public support led to protests and eventual cancellation.';
-      outcome.rating = 'Public Relations Disaster';
-      return outcome;
-    }
-    
-    if (this.money <= 0) {
-      outcome.type = 'lose';
-      outcome.title = 'Bankruptcy';
-      outcome.description = 'You ran out of funding and the project has been abandoned. Investors have lost confidence in your management.';
-      outcome.rating = 'Financial Failure';
-      return outcome;
-    }
-    
-    // Time-based outcomes (normal end of game)
+  private checkGameOver(): boolean {
+    // Game is over if turns run out
     if (this.turnsRemaining <= 0) {
-      if (researchComplete) {
-        // Research completed successfully
-        if (scorePercent >= 80) {
-          outcome.type = 'win';
-          outcome.title = 'Groundbreaking Success';
-          outcome.description = 'Your research has revolutionized geothermal technologies while maintaining excellent public support and financial management.';
-        } else if (scorePercent >= 60) {
-          outcome.type = 'win';
-          outcome.title = 'Successful Project';
-          outcome.description = 'You completed the research with reasonable efficiency, though there was room for improvement in resource management.';
-        } else {
-          outcome.type = 'partial';
-          outcome.title = 'Pyrrhic Victory';
-          outcome.description = 'The research is complete, but at what cost? Your project barely scraped by with serious compromises.';
-        }
-      } else {
-        // Research incomplete
-        const progressPercent = Math.floor((this.researchPoints / this.config.limits.researchNeeded) * 100);
-        
-        if (progressPercent >= 75) {
-          outcome.type = 'partial';
-          outcome.title = 'Promising Results';
-          outcome.description = `You achieved ${progressPercent}% of your research goals. With a bit more time, success was within reach.`;
-        } else if (progressPercent >= 50) {
-          outcome.type = 'lose';
-          outcome.title = 'Incomplete Project';
-          outcome.description = `You only completed ${progressPercent}% of the necessary research. The project's future is uncertain.`;
-        } else {
-          outcome.type = 'lose';
-          outcome.title = 'Research Failure';
-          outcome.description = `With only ${progressPercent}% of research completed, the project is considered a failure.`;
-        }
-      }
-      return outcome;
+      return true;
     }
     
-    // This should not be reached in normal gameplay
-    return outcome;
+    // Game is over if public opinion reaches 0
+    if (this.publicOpinion <= 0) {
+      return true;
+    }
+    
+    // Game is over if research points reach the win threshold
+    if (this.researchPoints >= this.config.winConditions.research) {
+      return true;
+    }
+    
+    // Game is over if money runs out
+    if (this.money <= 0) {
+      return true;
+    }
+    
+    // Game is over if risk gets too high
+    if (this.risk >= this.config.winConditions.maxRisk) {
+      return true;
+    }
+    
+    return false;
   }
   
   /**
-   * Check game win/lose conditions with enhanced outcomes
+   * Handle end of game and determine win/loss
    */
-  checkGameConditions() {
-    // Return early if game should continue
-    if (this.publicOpinion > 0 && this.money > 0 && this.turnsRemaining > 0) {
-      return false;
+  private handleGameOver() {
+    let result = '';
+    let explanation = '';
+    
+    // Check win conditions
+    if (this.researchPoints >= this.config.winConditions.research) {
+      result = 'You Win!';
+      explanation = `You've successfully developed geothermal energy with ${this.researchPoints} research points!`;
+    } 
+    // Check loss conditions
+    else if (this.publicOpinion <= 0) {
+      result = 'Game Over';
+      explanation = 'Public opinion has turned against your project. Your funding has been cut.';
+    }
+    else if (this.money <= 0) {
+      result = 'Game Over';
+      explanation = 'You\'ve run out of funding for your research.';
+    }
+    else if (this.risk >= this.config.winConditions.maxRisk) {
+      result = 'Game Over';
+      explanation = 'Seismic activity has reached dangerous levels. The government has shut down your project.';
+    }
+    else {
+      result = 'Game Over';
+      explanation = 'You\'ve run out of time to complete your research.';
     }
     
-    // Calculate final score
-    const score = this.calculateGameScore();
-    
-    // Determine detailed outcome
-    const outcome = this.determineGameOutcome(score);
-    
-    // Start game over scene with detailed outcome information
-    this.scene.start('GameOverScene', {
-      outcome: outcome.type,
-      title: outcome.title,
-      description: outcome.description,
-      rating: outcome.rating,
-      score: score.total,
-      scorePercent: outcome.scorePercent,
-      scoreBreakdown: {
-        research: score.research,
-        opinion: score.opinion,
-        risk: score.risk,
-        money: score.money,
-        time: score.time,
-        bonus: score.bonus
+    // Start the game over scene
+    this.scene.start('GameOverScene', { 
+      result, 
+      explanation,
+      stats: {
+        turns: this.turn,
+        money: this.money,
+        publicOpinion: this.publicOpinion,
+        risk: this.risk,
+        researchPoints: this.researchPoints,
+        turnsRemaining: this.turnsRemaining
       }
     });
-    
-    return true;
   }
-
+  
   /**
-   * Process the end of turn actions and check win/lose conditions
+   * Handle advancing to the next turn
    */
-  endTurn() {
-    // Handle seismic events and their effects
+  handleNextTurn() {
+    // Apply passive rewards if not already applied this turn
+    if (!this.passiveRewardsApplied) {
+      this.applyPassiveRewards();
+      this.passiveRewardsApplied = true;
+    }
+    
+    // Increment turn counter
+    this.turn++;
+    
+    // Run event chance calculation
     this.handleSeismicEvents();
-
-    // Clamp values to reasonable ranges
-    this.publicOpinion = Phaser.Math.Clamp(this.publicOpinion, 0, this.config.initialValues.opinion);
-    this.money = Phaser.Math.Clamp(this.money, 0, Infinity);
-    this.risk = Phaser.Math.Clamp(this.risk, 0, this.config.limits.maxRisk);
-
-    // Update resource display for new turn
-    this.updateResourceDisplay();
-
-    // Check win/loss conditions
-    if (this.checkGameConditions()) {
+    
+    // Check if the game is over
+    if (this.checkGameOver()) {
+      this.handleGameOver();
       return;
     }
     
-    // Otherwise, increment turn and await next player action
-    this.turn += 1;
+    // Update resource displays
+    this.updateResourceDisplay();
     
     // Reset action buttons for next turn
     this.clearActionOptions();
   }
 
   /**
-   * Cleanup resources when scene is shut down
+   * Apply passive rewards at the end of each turn
+   * This simulates ongoing background activities like research and funding
    */
-  shutdown() {
-    // Destroy resource bars to prevent memory leaks
-    this.moneyBar.destroy();
-    this.turnsBar.destroy();
-    this.opinionBar.destroy();
-    this.riskBar.destroy();
-    this.researchBar.destroy();
+  applyPassiveRewards() {
+    const rewards = this.config.passiveRewards;
+    const effects = {
+      money: 0,
+      knowledge: 0
+    };
+    
+    // Add base research income
+    effects.knowledge += rewards.baseResearchPerTurn;
+    
+    // Add opinion-based income (higher opinion = more funding)
+    const opinionPercent = this.publicOpinion / this.config.maxValues.opinion;
+    effects.money += Math.floor(rewards.baseFundingPerTurn * opinionPercent);
+    
+    // Apply the effects
+    this.researchPoints += effects.knowledge;
+    this.money += effects.money;
+    
+    // Create message based on effects
+    let message = '';
+    if (effects.knowledge > 0 && effects.money > 0) {
+      message = `Passive income: Research +${effects.knowledge}, Funding +$${effects.money}.`;
+    } else if (effects.knowledge > 0) {
+      message = `Ongoing research yielded +${effects.knowledge} knowledge.`;
+    } else if (effects.money > 0) {
+      message = `Received +$${effects.money} in ongoing funding.`;
+    }
+    
+    if (message) {
+      this.setInfoText(message, false, 'success');
+    }
+    
+    // Update UI
+    this.updateResourceDisplay();
+  }
+  
+  /**
+   * End the current turn and check for game over
+   */
+  endTurn() {
+    // Reset passive rewards tracking for next turn
+    this.passiveRewardsApplied = false;
+  }
+  
+  /**
+   * Clean up event listeners and other resources when scene is shut down
+   * This is called by our scene lifecycle management
+   */
+  public destroy() {
+    // Clean up resize event handler
+    if (this.resizeHandler) {
+      this.scale.off('resize', this.resizeHandler, this);
+      this.resizeHandler = null;
+    }
+    
+    // Clear any pending resize timeout
+    if (this.resizeTimeoutId !== null) {
+      clearTimeout(this.resizeTimeoutId);
+      this.resizeTimeoutId = null;
+    }
   }
 }

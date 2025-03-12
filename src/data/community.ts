@@ -3,6 +3,13 @@ import { ActionData } from '../ui/ActionOption';
 
 /**
  * Array of community engagement actions available to the player
+ * 
+ * These represent public relations and community outreach actions that:
+ * - Focus primarily on improving public opinion
+ * - Vary in cost and time requirements 
+ * - Have minimal direct effects on seismic risk
+ * - Some options provide small knowledge gains
+ * - More expensive options may provide financial benefits through partnerships
  */
 export const communityEngagement: ActionData[] = [
     {
@@ -17,9 +24,9 @@ export const communityEngagement: ActionData[] = [
         nl: "Houd een bijeenkomst voor de gemeenschap om zorgen te bespreken en vragen te beantwoorden.",
         fr: "Organisez une réunion communautaire pour répondre aux préoccupations et aux questions."
       },
-      cost: 5, // Reduced from 10
+      cost: 5,
       timeRequired: 1,
-      effects: { publicOpinion: 15, money: 0, seismicRisk: 0, knowledge: 0 } // Added missing properties, removed + sign
+      effects: { publicOpinion: 15, money: 0, seismicRisk: 0, knowledge: 0 }
     },
     {
       id: "community_002",
@@ -35,7 +42,7 @@ export const communityEngagement: ActionData[] = [
       },
       cost: 15,
       timeRequired: 2,
-      effects: { publicOpinion: 5, knowledge: 5, seismicRisk: 0, money: 0 } // Added missing properties, removed + signs
+      effects: { publicOpinion: 5, knowledge: 5, seismicRisk: 0, money: 0 }
     },
     {
       id: "community_003",
@@ -49,9 +56,9 @@ export const communityEngagement: ActionData[] = [
         nl: "Start een positieve PR-campagne om desinformatie te bestrijden.",
         fr: "Lancez une campagne de relations publiques pour contrer la désinformation."
       },
-      cost: 15, // Reduced from 20
-      timeRequired: 1, // Reduced from 2
-      effects: { publicOpinion: 20, knowledge: 5, money: 5, seismicRisk: 0 } // Added missing seismicRisk, removed + signs
+      cost: 15,
+      timeRequired: 1,
+      effects: { publicOpinion: 20, knowledge: 5, money: 5, seismicRisk: 0 }
     },
     {
       id: "community_004",
@@ -65,9 +72,9 @@ export const communityEngagement: ActionData[] = [
         nl: "Bied werkgelegenheid en training aan lokale inwoners.",
         fr: "Offrez des opportunités d'emploi et de formation aux résidents locaux."
       },
-      cost: 20, // Reduced from 25
-      timeRequired: 2, // Reduced from 3
-      effects: { publicOpinion: 25, money: -10, knowledge: 5, seismicRisk: 0 } // Added missing seismicRisk, removed + signs
+      cost: 20,
+      timeRequired: 2,
+      effects: { publicOpinion: 25, money: -10, knowledge: 5, seismicRisk: 0 }
     },
     {
       id: "community_005",
@@ -83,7 +90,7 @@ export const communityEngagement: ActionData[] = [
       },
       cost: 30,
       timeRequired: 2,
-      effects: { publicOpinion: 15, money: 30, seismicRisk: -5, knowledge: 0 } // Added missing knowledge, removed + signs
+      effects: { publicOpinion: 15, money: 30, seismicRisk: -5, knowledge: 0 }
     }
   ];
   

@@ -5,6 +5,7 @@ html, body {
   width: 100%;
   background-color: #242424;
   overflow: hidden;
+  -webkit-overflow-scrolling: touch; /* For smoother scrolling on iOS devices */
   font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -25,7 +26,7 @@ canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
-  object-fit: fill;
+  object-fit: contain; /* Maintains aspect ratio while maximizing size */
   margin: 0 auto;
 }
 

@@ -3,6 +3,12 @@ import { ActionData } from '../ui/ActionOption';
 
 /**
  * Array of theoretical research actions available to the player
+ * 
+ * These represent academic and computational research actions that:
+ * - Generally have lower costs and time requirements
+ * - Typically reduce seismic risk
+ * - Provide moderate knowledge gains
+ * - Have minimal direct financial return
  */
 export const researchTheoretical: ActionData[] = [
     {
@@ -17,9 +23,9 @@ export const researchTheoretical: ActionData[] = [
         nl: "Analyseer ondergrondse temperaturen en geologische structuren om de hulpbronnen te beoordelen.",
         fr: "Analyse des températures souterraines et des structures géologiques pour évaluer le potentiel de la ressource."
       },
-      cost: 10, // Reduced from 15
-      timeRequired: 1, // Reduced from 2
-      effects: { seismicRisk: -5, publicOpinion: 2, knowledge: 12, money: 0 } // Standardized with all required properties
+      cost: 10,
+      timeRequired: 1,
+      effects: { seismicRisk: -5, publicOpinion: 2, knowledge: 12, money: 0 }
     },
     {
       id: "theory_002",
@@ -33,9 +39,9 @@ export const researchTheoretical: ActionData[] = [
         nl: "Ontwikkel simulatiemodellen om de efficiëntie van energie-extractie te optimaliseren.",
         fr: "Développez des modèles de simulation pour optimiser l'efficacité de l'extraction d'énergie."
       },
-      cost: 15, // Reduced from 20
-      timeRequired: 2, // Reduced from 3
-      effects: { knowledge: 18, seismicRisk: -3, money: 10, publicOpinion: 0 } // Added missing publicOpinion
+      cost: 15,
+      timeRequired: 2,
+      effects: { knowledge: 18, seismicRisk: -3, money: 10, publicOpinion: 0 }
     },
     {
       id: "theory_003",
@@ -51,7 +57,7 @@ export const researchTheoretical: ActionData[] = [
       },
       cost: 25,
       timeRequired: 3,
-      effects: { seismicRisk: -10, knowledge: 10, publicOpinion: 0, money: 0 } // Added missing properties
+      effects: { seismicRisk: -10, knowledge: 10, publicOpinion: 0, money: 0 }
     }
   ];
   
