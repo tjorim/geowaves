@@ -1,4 +1,5 @@
-// src/scenes/GameOverScene.ts
+import Phaser from 'phaser';
+
 export class GameOverScene extends Phaser.Scene {
     constructor() { super('GameOverScene'); }
     create(data: { outcome: 'win' | 'lose', reason?: string }) {
@@ -16,5 +17,5 @@ export class GameOverScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true })
         .on('pointerdown', () => this.scene.start('MenuScene'));
     }
-  }
+}
   
