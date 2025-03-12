@@ -1,4 +1,5 @@
-// src/scenes/MenuScene.ts
+import Phaser from 'phaser';
+
 export class MenuScene extends Phaser.Scene {
     constructor() { super('MenuScene'); }
     create() {
