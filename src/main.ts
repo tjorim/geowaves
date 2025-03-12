@@ -17,7 +17,7 @@ const config: Phaser.Types.Core.GameConfig = {
     default: 'arcade',   // Simple physics for basic movement and collisions
     arcade: {
       gravity: { x: 0, y: 0 }, // No gravity by default
-      debug: false       // Set to true to see physics bodies and velocities
+      debug: process.env.NODE_ENV !== 'production'  // Enable in development to see physics bodies and velocities
     }
   }
 };

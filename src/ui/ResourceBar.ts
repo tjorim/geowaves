@@ -88,10 +88,18 @@ export class ResourceBar {
 
   /**
    * Redraw the bar fill based on the current value
+   * Shows red color when below 20% capacity
    */
   private updateBar() {
     this.barFill.clear();
-    this.barFill.fillStyle(this.color, 1);
+    
+    // Change color based on resource level
+    let fillColor = this.color;
+    if (this.currentValue / this.maxValue < 0.2) {
+      fillColor = 0xff0000; // Red for critical levels
+    }
+    
+    this.barFill.fillStyle(fillColor, 1);
 
     // Calculate width based on current value compared to max
     const fillWidth = (this.currentValue / this.maxValue) * this.width;
