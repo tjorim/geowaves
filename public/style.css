@@ -32,23 +32,18 @@ canvas {
 /* Media query for mobile devices */
 @media (max-width: 768px) {
   html, body {
-    /* Prevent zooming on mobile */
-    touch-action: pan-x pan-y;
+    /* Prevent zooming and unwanted touch behaviors for game interaction */
+    touch-action: none; /* Disable all default touch actions for the game */
     -webkit-touch-callout: none;
     -webkit-text-size-adjust: none;
     -webkit-user-select: none;
+    position: fixed;
+    overflow: hidden;
   }
   
   canvas {
     border-radius: 0;
     box-shadow: none;
-  }
-  
-  /* Disable unwanted touch behaviors */
-  body {
-    touch-action: none;
-    position: fixed;
-    overflow: hidden;
   }
 }
 

@@ -103,13 +103,16 @@ export class ResourceBar {
     const labelText = verySmallScreen
       ? `${this.label}\n${this.currentValue}/${this.maxValue}` // Split to two lines on very small screens
       : `${this.label}: ${this.currentValue}/${this.maxValue}`;
+    
+    // Calculate responsive font size based on screen width and value length
+    const baseFontSize = this.calculateResponsiveFontSize();
       
     this.textLabel = this.scene.add.text(
       labelX,
       labelY,
       labelText,
       { 
-        fontSize: isMobile ? '12px' : '16px', 
+        fontSize: `${baseFontSize}px`, 
         color: '#ffffff',
         align: verySmallScreen ? 'center' : 'left',
         // Make label more compact on mobile
@@ -134,8 +137,57 @@ export class ResourceBar {
     const labelText = verySmallScreen
       ? `${this.label}\n${this.currentValue}/${this.maxValue}` // Split to two lines on very small screens
       : `${this.label}: ${this.currentValue}/${this.maxValue}`;
-      
+    
+    // Get the responsive font size based on the new value
+    const fontSize = this.calculateResponsiveFontSize();
+    
+    // Update text content and font size
     this.textLabel.setText(labelText);
+    this.textLabel.setFontSize(`${fontSize}px`);
+  }
+  
+  /**
+   * Calculate the appropriate font size based on screen size and value length
+   * @returns The calculated font size in pixels
+   */
+  private calculateResponsiveFontSize(): number {
+    const gameWidth = this.scene.scale.width;
+    
+    // Base font sizes for different screen sizes
+    let baseFontSize = 16; // Default for desktop
+    
+    if (gameWidth < 768) { // Mobile
+      baseFontSize = 12;
+    }
+    
+    if (gameWidth < 400) { // Very small screens
+      baseFontSize = 10;
+    }
+    
+    // Calculate digital length of the current and maximum values
+    const currentValueLength = this.currentValue.toString().length;
+    const maxValueLength = this.maxValue.toString().length;
+    
+    // Adjust font size based on the total displayed value length
+    const totalLength = this.label.length + currentValueLength + maxValueLength + 3; // +3 for ": " and "/"
+    
+    // Adjust font size for very long numbers or available width
+    if (totalLength > 20 || this.width < 120) {
+      baseFontSize = Math.max(8, baseFontSize - 2);
+    }
+    
+    // Further reduce for extremely long values
+    if (totalLength > 30 || currentValueLength > 6 || maxValueLength > 6) {
+      baseFontSize = Math.max(8, baseFontSize - 2);
+    }
+    
+    // Consider available horizontal space (especially for side-by-side layout)
+    const availableWidth = gameWidth - (this.x + this.width + 20);
+    if (availableWidth < 150 && gameWidth >= 400) { // Only for horizontal layout
+      baseFontSize = Math.max(8, baseFontSize - 2);
+    }
+    
+    return baseFontSize;
   }
 
   /**

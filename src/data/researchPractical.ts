@@ -1,5 +1,10 @@
 // src/data/researchPractical.ts
-export const researchPractical = [
+import { ActionData } from '../ui/ActionOption';
+
+/**
+ * Array of practical research actions available to the player
+ */
+export const researchPractical: ActionData[] = [
     {
       id: "practical_001",
       name: {
@@ -14,7 +19,7 @@ export const researchPractical = [
       },
       cost: 30, // Reduced from 40
       timeRequired: 2, // Reduced from 3
-      effects: { seismicRisk: +10, knowledge: +20, publicOpinion: -5, money: +15 } // Added money benefit, increased knowledge
+      effects: { seismicRisk: 10, knowledge: 20, publicOpinion: -5, money: 15 } // Removed + signs, standardized
     },
     {
       id: "practical_002",
@@ -30,7 +35,7 @@ export const researchPractical = [
       },
       cost: 20, // Reduced from 30
       timeRequired: 1, // Reduced from 2
-      effects: { seismicRisk: -10, knowledge: +12, publicOpinion: +10 } // Increased all benefits
+      effects: { seismicRisk: -10, knowledge: 12, publicOpinion: 10, money: 0 } // Added money, removed + signs
     },
     {
       id: "practical_003",
@@ -46,7 +51,7 @@ export const researchPractical = [
       },
       cost: 60,
       timeRequired: 5,
-      effects: { knowledge: +30, publicOpinion: +10, seismicRisk: +5 }
+      effects: { knowledge: 30, publicOpinion: 10, seismicRisk: 5, money: 0 } // Added money, removed + signs
     }
   ];
   

@@ -1,5 +1,10 @@
 // src/data/researchTheoretical.ts
-export const researchTheoretical = [
+import { ActionData } from '../ui/ActionOption';
+
+/**
+ * Array of theoretical research actions available to the player
+ */
+export const researchTheoretical: ActionData[] = [
     {
       id: "theory_001",
       name: {
@@ -14,7 +19,7 @@ export const researchTheoretical = [
       },
       cost: 10, // Reduced from 15
       timeRequired: 1, // Reduced from 2
-      effects: { seismicRisk: -5, publicOpinion: +2, knowledge: +12 } // Added public opinion benefit, increased knowledge
+      effects: { seismicRisk: -5, publicOpinion: 2, knowledge: 12, money: 0 } // Standardized with all required properties
     },
     {
       id: "theory_002",
@@ -30,7 +35,7 @@ export const researchTheoretical = [
       },
       cost: 15, // Reduced from 20
       timeRequired: 2, // Reduced from 3
-      effects: { knowledge: +18, seismicRisk: -3, money: +10 } // Added money benefit, increased knowledge
+      effects: { knowledge: 18, seismicRisk: -3, money: 10, publicOpinion: 0 } // Added missing publicOpinion
     },
     {
       id: "theory_003",
@@ -46,7 +51,7 @@ export const researchTheoretical = [
       },
       cost: 25,
       timeRequired: 3,
-      effects: { seismicRisk: -10, knowledge: +10 }
+      effects: { seismicRisk: -10, knowledge: 10, publicOpinion: 0, money: 0 } // Added missing properties
     }
   ];
   

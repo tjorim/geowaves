@@ -1,5 +1,10 @@
 // src/data/community.ts
-export const communityEngagement = [
+import { ActionData } from '../ui/ActionOption';
+
+/**
+ * Array of community engagement actions available to the player
+ */
+export const communityEngagement: ActionData[] = [
     {
       id: "community_001",
       name: {
@@ -14,7 +19,7 @@ export const communityEngagement = [
       },
       cost: 5, // Reduced from 10
       timeRequired: 1,
-      effects: { publicOpinion: +15, money: 0 } // Increased opinion gain, removed money cost
+      effects: { publicOpinion: 15, money: 0, seismicRisk: 0, knowledge: 0 } // Added missing properties, removed + sign
     },
     {
       id: "community_002",
@@ -30,7 +35,7 @@ export const communityEngagement = [
       },
       cost: 15,
       timeRequired: 2,
-      effects: { publicOpinion: +5, knowledge: +5 }
+      effects: { publicOpinion: 5, knowledge: 5, seismicRisk: 0, money: 0 } // Added missing properties, removed + signs
     },
     {
       id: "community_003",
@@ -46,7 +51,7 @@ export const communityEngagement = [
       },
       cost: 15, // Reduced from 20
       timeRequired: 1, // Reduced from 2
-      effects: { publicOpinion: +20, knowledge: +5, money: +5 } // Added positive money effect from increased support
+      effects: { publicOpinion: 20, knowledge: 5, money: 5, seismicRisk: 0 } // Added missing seismicRisk, removed + signs
     },
     {
       id: "community_004",
@@ -62,7 +67,7 @@ export const communityEngagement = [
       },
       cost: 20, // Reduced from 25
       timeRequired: 2, // Reduced from 3
-      effects: { publicOpinion: +25, money: -10, knowledge: +5 } // Less money cost, more opinion gain
+      effects: { publicOpinion: 25, money: -10, knowledge: 5, seismicRisk: 0 } // Added missing seismicRisk, removed + signs
     },
     {
       id: "community_005",
@@ -78,7 +83,7 @@ export const communityEngagement = [
       },
       cost: 30,
       timeRequired: 2,
-      effects: { publicOpinion: +15, money: +30, seismicRisk: -5 }
+      effects: { publicOpinion: 15, money: 30, seismicRisk: -5, knowledge: 0 } // Added missing knowledge, removed + signs
     }
   ];
   
