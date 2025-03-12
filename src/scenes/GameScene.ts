@@ -1,5 +1,37 @@
 import Phaser from 'phaser';
 import { ResourceBar } from '../ui/ResourceBar';
+import { events } from '../data/events';
+import { communityEngagement } from '../data/community';
+import { researchTheoretical } from '../data/researchTheoretical';
+import { researchPractical } from '../data/researchPractical';
+
+// Define interfaces for data structures
+interface ResearchAction {
+  id: string;
+  name: { [key: string]: string };
+  description: { [key: string]: string };
+  cost: number;
+  timeRequired: number;
+  effects: { 
+    seismicRisk?: number; 
+    publicOpinion?: number; 
+    knowledge?: number;
+    money?: number;
+  };
+}
+
+interface CommunityAction {
+  id: string;
+  name: { [key: string]: string };
+  description: { [key: string]: string };
+  cost: number;
+  timeRequired: number;
+  effects: { 
+    publicOpinion?: number; 
+    money?: number;
+    knowledge?: number;
+  };
+}
 
 export class GameScene extends Phaser.Scene {
   // Game constants for initial values
@@ -10,27 +42,6 @@ export class GameScene extends Phaser.Scene {
   private static readonly INITIAL_RESEARCH = 0;
   private static readonly RESEARCH_NEEDED = 50;
   private static readonly MAX_RISK = 100;
-
-  // Game constants for action costs
-  private static readonly THEORY_MONEY_COST = 10;
-  private static readonly THEORY_TURNS_COST = 2;
-  private static readonly THEORY_RESEARCH_GAIN = 5;
-  private static readonly THEORY_RISK_INCREASE = 0;
-
-  private static readonly PRACTICAL_MONEY_COST = 25;
-  private static readonly PRACTICAL_TURNS_COST = 1;
-  private static readonly PRACTICAL_RISK_INCREASE = 5;
-  private static readonly PRACTICAL_RESEARCH_GAIN = 8;
-
-  private static readonly ENGAGEMENT_MONEY_COST = 5;
-  private static readonly ENGAGEMENT_TURNS_COST = 1;
-  private static readonly ENGAGEMENT_OPINION_GAIN = 10;
-
-  // Game constants for events
-  private static readonly MINOR_EVENT_THRESHOLD = 50; // Risk below this is a minor event
-  private static readonly MINOR_EVENT_OPINION_LOSS = 10;
-  private static readonly MAJOR_EVENT_OPINION_LOSS = 30;
-  private static readonly MAJOR_EVENT_TURNS_LOSS = 1;
 
   // Game constants for passive effects
   private static readonly HIGH_RISK_THRESHOLD = 50; // Risk above this causes passive opinion loss
@@ -43,6 +54,9 @@ export class GameScene extends Phaser.Scene {
   private risk = GameScene.INITIAL_RISK;
   private turn = 1;
   private researchPoints = GameScene.INITIAL_RESEARCH;
+  
+  // UI container for action buttons and descriptions
+  private actionsContainer!: Phaser.GameObjects.Container;
 
   // Resource bars
   private moneyBar!: ResourceBar;
@@ -89,13 +103,16 @@ export class GameScene extends Phaser.Scene {
     // Instructions / status text
     this.infoText = this.add.text(20, startY + spacing * 6, 'Choose an action for this turn.', { fontSize: '16px' });
 
+    // Create container for action buttons and descriptions
+    this.actionsContainer = this.add.container(0, 0);
+
     // Calculate button positions based on resource bar spacing
     const buttonStartY = startY + spacing * 8;
 
     // Action buttons using helper method
-    this.createActionButton(buttonStartY, 'Theoretical Research', () => this.doResearch('theory'));
-    this.createActionButton(buttonStartY + 30, 'Practical Research', () => this.doResearch('practical'));
-    this.createActionButton(buttonStartY + 60, 'Public Engagement', () => this.doEngagement());
+    this.createActionButton(buttonStartY, 'Theoretical Research', () => this.showTheoreticalResearchOptions());
+    this.createActionButton(buttonStartY + 30, 'Practical Research', () => this.showPracticalResearchOptions());
+    this.createActionButton(buttonStartY + 60, 'Public Engagement', () => this.showCommunityEngagementOptions());
   }
 
   updateResourceDisplay() {
@@ -108,61 +125,194 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Perform research action based on the selected type
-   * @param type The type of research to perform (theory or practical)
+   * Display theoretical research options for the player to select
    */
-  doResearch(type: 'theory' | 'practical') {
-    if (type === 'theory') {
-      this.money -= GameScene.THEORY_MONEY_COST;
-      this.turnsRemaining -= GameScene.THEORY_TURNS_COST;
-      this.risk += GameScene.THEORY_RISK_INCREASE;
-      this.researchPoints += GameScene.THEORY_RESEARCH_GAIN;
-      this.infoText.setText('Conducted theoretical studies this turn.');
-    } else if (type === 'practical') {
-      this.money -= GameScene.PRACTICAL_MONEY_COST;
-      this.turnsRemaining -= GameScene.PRACTICAL_TURNS_COST;
-      this.risk += GameScene.PRACTICAL_RISK_INCREASE;
-      this.researchPoints += GameScene.PRACTICAL_RESEARCH_GAIN;
-      this.infoText.setText('Performed practical field tests this turn.');
-    }
+  showTheoreticalResearchOptions() {
+    // Clear any existing options first
+    this.clearActionOptions();
+    
+    // Create option buttons for each theoretical research
+    const yPos = 350;
+    const spacing = 80;
+    
+    researchTheoretical.forEach((research, index) => {
+      const button = this.createActionButton(yPos + index * spacing, research.name.en, () => {
+        if (this.money >= research.cost && this.turnsRemaining >= research.timeRequired) {
+          this.doTheoreticalResearch(research);
+        } else {
+          this.infoText.setText('Not enough resources for this action.');
+        }
+      });
+      
+      // Add description text
+      const desc = this.add.text(180, yPos + index * spacing, 
+        `Cost: $${research.cost}, Time: ${research.timeRequired} turns
+        Risk: ${research.effects.seismicRisk || 0}, Knowledge: +${research.effects.knowledge || 0}
+        ${research.description.en}`, 
+        { fontSize: '12px', wordWrap: { width: 400 } }
+      );
+      
+      this.actionsContainer.add([button, desc]);
+    });
+    
+    // Add back button
+    const backButton = this.createActionButton(yPos + researchTheoretical.length * spacing, 'Back', () => {
+      this.clearActionOptions();
+    });
+    this.actionsContainer.add(backButton);
+  }
+  
+  /**
+   * Display practical research options for the player to select
+   */
+  showPracticalResearchOptions() {
+    // Clear any existing options first
+    this.clearActionOptions();
+    
+    // Create option buttons for each practical research
+    const yPos = 350;
+    const spacing = 80;
+    
+    researchPractical.forEach((research, index) => {
+      const button = this.createActionButton(yPos + index * spacing, research.name.en, () => {
+        if (this.money >= research.cost && this.turnsRemaining >= research.timeRequired) {
+          this.doPracticalResearch(research);
+        } else {
+          this.infoText.setText('Not enough resources for this action.');
+        }
+      });
+      
+      // Add description text
+      const desc = this.add.text(180, yPos + index * spacing, 
+        `Cost: $${research.cost}, Time: ${research.timeRequired} turns
+        Risk: ${research.effects.seismicRisk || 0}, Knowledge: +${research.effects.knowledge || 0}
+        ${research.description.en}`, 
+        { fontSize: '12px', wordWrap: { width: 400 } }
+      );
+      
+      this.actionsContainer.add([button, desc]);
+    });
+    
+    // Add back button
+    const backButton = this.createActionButton(yPos + researchPractical.length * spacing, 'Back', () => {
+      this.clearActionOptions();
+    });
+    this.actionsContainer.add(backButton);
+  }
+  
+  /**
+   * Display community engagement options for the player to select
+   */
+  showCommunityEngagementOptions() {
+    // Clear any existing options first
+    this.clearActionOptions();
+    
+    // Create option buttons for each community engagement
+    const yPos = 350;
+    const spacing = 80;
+    
+    communityEngagement.forEach((action, index) => {
+      const button = this.createActionButton(yPos + index * spacing, action.name.en, () => {
+        if (this.money >= action.cost && this.turnsRemaining >= action.timeRequired) {
+          this.doCommunityEngagement(action);
+        } else {
+          this.infoText.setText('Not enough resources for this action.');
+        }
+      });
+      
+      // Add description text
+      const desc = this.add.text(180, yPos + index * spacing, 
+        `Cost: $${action.cost}, Time: ${action.timeRequired} turns
+        Opinion: +${action.effects.publicOpinion || 0}
+        ${action.description.en}`, 
+        { fontSize: '12px', wordWrap: { width: 400 } }
+      );
+      
+      this.actionsContainer.add([button, desc]);
+    });
+    
+    // Add back button
+    const backButton = this.createActionButton(yPos + communityEngagement.length * spacing, 'Back', () => {
+      this.clearActionOptions();
+    });
+    this.actionsContainer.add(backButton);
+  }
+  
+  /**
+   * Clear all action option buttons and text
+   */
+  clearActionOptions() {
+    this.actionsContainer.removeAll(true);
+  }
+  
+  /**
+   * Perform selected theoretical research action
+   */
+  doTheoreticalResearch(research: ResearchAction) {
+    this.money -= research.cost;
+    this.turnsRemaining -= research.timeRequired;
+    
+    if (research.effects.seismicRisk) this.risk += research.effects.seismicRisk;
+    if (research.effects.publicOpinion) this.publicOpinion += research.effects.publicOpinion;
+    if (research.effects.knowledge) this.researchPoints += research.effects.knowledge;
+    
+    this.infoText.setText(`Conducted ${research.name.en} this turn.`);
+    this.clearActionOptions();
     this.endTurn();
   }
-
+  
   /**
-   * Perform public engagement action to improve public opinion
+   * Perform selected practical research action
    */
-  doEngagement() {
-    this.money -= GameScene.ENGAGEMENT_MONEY_COST;
-    this.turnsRemaining -= GameScene.ENGAGEMENT_TURNS_COST;
-    this.publicOpinion += GameScene.ENGAGEMENT_OPINION_GAIN;
-    this.infoText.setText('Held a community engagement session this turn.');
+  doPracticalResearch(research: ResearchAction) {
+    this.money -= research.cost;
+    this.turnsRemaining -= research.timeRequired;
+    
+    if (research.effects.seismicRisk) this.risk += research.effects.seismicRisk;
+    if (research.effects.publicOpinion) this.publicOpinion += research.effects.publicOpinion;
+    if (research.effects.knowledge) this.researchPoints += research.effects.knowledge;
+    
+    this.infoText.setText(`Conducted ${research.name.en} this turn.`);
+    this.clearActionOptions();
+    this.endTurn();
+  }
+  
+  /**
+   * Perform selected community engagement action
+   */
+  doCommunityEngagement(action: CommunityAction) {
+    this.money -= action.cost;
+    this.turnsRemaining -= action.timeRequired;
+    
+    if (action.effects.publicOpinion) this.publicOpinion += action.effects.publicOpinion;
+    if (action.effects.money) this.money += action.effects.money;
+    if (action.effects.knowledge) this.researchPoints += action.effects.knowledge;
+    
+    this.infoText.setText(`Conducted ${action.name.en} this turn.`);
+    this.clearActionOptions();
     this.endTurn();
   }
 
   handleSeismicEvents() {
-    // Apply a random seismic event based on risk
+    // Check if a random event occurs based on risk level
     if (Math.random() * 100 < this.risk) {  // risk is a percentage chance
-      // An event occurs
-      if (this.risk < GameScene.MINOR_EVENT_THRESHOLD) {
-        // minor event
-        this.publicOpinion -= GameScene.MINOR_EVENT_OPINION_LOSS;
-        this.infoText.setText(`${this.infoText.text}\nA minor quake occurred! Public Opinion -${GameScene.MINOR_EVENT_OPINION_LOSS}.`);
-      } else {
-        // major event
-        this.publicOpinion -= GameScene.MAJOR_EVENT_OPINION_LOSS;
-        this.turnsRemaining -= GameScene.MAJOR_EVENT_TURNS_LOSS;
-        this.infoText.setText(
-          `${this.infoText.text}\nMajor earthquake! Public Opinion -${GameScene.MAJOR_EVENT_OPINION_LOSS}, Turns -${GameScene.MAJOR_EVENT_TURNS_LOSS}.`
-        );
-      }
+      // Select a random event from the events array
+      const eventIndex = Math.floor(Math.random() * events.length);
+      const randomEvent = events[eventIndex];
+      
+      // Apply the event effects
+      if (randomEvent.effects.publicOpinion) this.publicOpinion += randomEvent.effects.publicOpinion;
+      if (randomEvent.effects.money) this.money += randomEvent.effects.money;
+      if (randomEvent.effects.seismicRisk) this.risk += randomEvent.effects.seismicRisk;
+      if (randomEvent.effects.time) this.turnsRemaining -= randomEvent.effects.time;
+      
+      // Display event information to player
+      this.infoText.setText(`${this.infoText.text}\nEvent: ${randomEvent.description.en}`);
     } else {
-      // no event
+      // No event occurred this turn
       this.infoText.setText(`${this.infoText.text}\nNo significant events this turn.`);
     }
-    // AI-driven public opinion drift: if no engagement for many turns, opinion might drop slightly
-    // (For MVP, we could simulate this by dropping opinion by 2 if an engagement action wasn't done, etc. 
-    // For simplicity, not implemented in this snippet.)
-
+    
     // Decrease public opinion slowly if risk is high (people growing concerned even without quakes)
     if (this.risk > GameScene.HIGH_RISK_THRESHOLD) {
       this.publicOpinion -= GameScene.HIGH_RISK_OPINION_LOSS;
@@ -210,8 +360,12 @@ export class GameScene extends Phaser.Scene {
     if (this.checkGameConditions()) {
       return;
     }
+    
     // Otherwise, increment turn and await next player action
     this.turn += 1;
+    
+    // Reset action buttons for next turn
+    this.clearActionOptions();
   }
 
   /**
