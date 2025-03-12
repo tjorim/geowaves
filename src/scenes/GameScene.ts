@@ -35,10 +35,10 @@ interface CommunityAction {
 
 export class GameScene extends Phaser.Scene {
   // Game constants for initial values
-  private static readonly INITIAL_MONEY = 100;
-  private static readonly INITIAL_TURNS = 10;
+  private static readonly INITIAL_MONEY = 200; // Increased from 100
+  private static readonly INITIAL_TURNS = 15; // Increased from 10
   private static readonly INITIAL_OPINION = 100;
-  private static readonly INITIAL_RISK = 0;
+  private static readonly INITIAL_RISK = 10; // Increased from 0 to create more events
   private static readonly INITIAL_RESEARCH = 0;
   private static readonly RESEARCH_NEEDED = 50;
   private static readonly MAX_RISK = 100;
@@ -67,52 +67,187 @@ export class GameScene extends Phaser.Scene {
 
   // Info text
   private infoText!: Phaser.GameObjects.Text;
+  
+  // Common UI styles
+  private buttonStyleMain: any;
+  private buttonStyleOption: any;
+  private textStyleInfo: any;
+  private textStyleDesc: any;
 
   constructor() { super('GameScene'); }
   
-  /**
-   * Creates a styled action button with consistent appearance
-   * @param y The y position for the button
-   * @param text The button text
-   * @param callback The function to call when the button is clicked
-   * @returns The created button as a Phaser.GameObjects.Text object
-   */
-  private createActionButton(y: number, text: string, callback: () => void): Phaser.GameObjects.Text {
-    return this.add.text(20, y, text, {
-      backgroundColor: '#444',
-      color: '#fff',
-      padding: { left: 5, right: 5, top: 5, bottom: 5 }
-    })
-      .setInteractive({ useHandCursor: true })
-      .on('pointerdown', callback);
-  }
+  // We no longer use this method since we're creating buttons directly in the UI methods
 
   create() {
-    // Create resource bars
-    const barWidth = 150;
+    // Initialize the UI immediately
+    this.initUI();
+    
+    // Listen for resize events
+    this.scale.on('resize', this.handleResize, this);
+  }
+  
+  /**
+   * Initialize UI elements based on current screen size
+   */
+  initUI() {
+    // Clear existing UI if present (important for resize handling)
+    if (this.actionsContainer) {
+      this.actionsContainer.destroy();
+    }
+    
+    if (this.moneyBar) {
+      this.moneyBar.destroy();
+      this.turnsBar.destroy();
+      this.opinionBar.destroy();
+      this.riskBar.destroy();
+      this.researchBar.destroy();
+    }
+    
+    if (this.infoText) {
+      this.infoText.destroy();
+    }
+    
+    // Get screen dimensions for responsive layout
+    const gameWidth = this.scale.width;
+    const gameHeight = this.scale.height;
+    const isMobile = gameWidth < 768;
+    
+    // Detect orientation for mobile
+    const isLandscape = gameWidth > gameHeight;
+    
+    // Define default styles for text and buttons that we'll use throughout the game
+    // This ensures consistency across all UI elements
+    this.buttonStyleMain = {
+      backgroundColor: '#444',
+      color: '#fff',
+      padding: { left: 20, right: 20, top: 15, bottom: 15 },
+      fontSize: isMobile ? '24px' : '16px',
+      fontStyle: 'bold'
+    };
+    
+    this.buttonStyleOption = {
+      backgroundColor: '#666',
+      color: '#fff',
+      padding: { left: 20, right: 20, top: 15, bottom: 15 },
+      fontSize: isMobile ? '24px' : '16px',
+      fontStyle: 'bold'
+    };
+    
+    this.textStyleInfo = {
+      fontSize: isMobile ? '20px' : '16px',
+      color: '#fff',
+      wordWrap: { width: gameWidth * 0.9 }
+    };
+    
+    this.textStyleDesc = {
+      fontSize: isMobile ? '18px' : '14px',
+      color: '#ccc',
+      wordWrap: { width: gameWidth * 0.9 },
+      lineSpacing: isMobile ? 8 : 0
+    };
+    
+    // Adjust sizes based on screen dimensions and orientation
+    const barWidth = isMobile ? Math.min(150, gameWidth * 0.4) : 150;
     const barHeight = 15;
     const startY = 20;
-    const spacing = 25;
+    const spacing = isMobile ? 20 : 25;
 
-    this.moneyBar = new ResourceBar(this, 20, startY, barWidth, barHeight, GameScene.INITIAL_MONEY, this.money, 'Money', 0x00ff00);
-    this.turnsBar = new ResourceBar(this, 20, startY + spacing, barWidth, barHeight, GameScene.INITIAL_TURNS, this.turnsRemaining, 'Turns', 0x00ffff);
-    this.opinionBar = new ResourceBar(this, 20, startY + spacing * 2, barWidth, barHeight, GameScene.INITIAL_OPINION, this.publicOpinion, 'Opinion', 0xffff00);
-    this.riskBar = new ResourceBar(this, 20, startY + spacing * 3, barWidth, barHeight, GameScene.MAX_RISK, this.risk, 'Risk', 0xff0000);
-    this.researchBar = new ResourceBar(this, 20, startY + spacing * 4, barWidth, barHeight, GameScene.RESEARCH_NEEDED, this.researchPoints, 'Research', 0x00ffff);
+    // Create resource bars - adjust position if on mobile
+    const barX = isMobile ? gameWidth * 0.05 : 20;
+    this.moneyBar = new ResourceBar(this, barX, startY, barWidth, barHeight, GameScene.INITIAL_MONEY, this.money, 'Money', 0x00ff00);
+    this.turnsBar = new ResourceBar(this, barX, startY + spacing, barWidth, barHeight, GameScene.INITIAL_TURNS, this.turnsRemaining, 'Turns', 0x00ffff);
+    this.opinionBar = new ResourceBar(this, barX, startY + spacing * 2, barWidth, barHeight, GameScene.INITIAL_OPINION, this.publicOpinion, 'Opinion', 0xffff00);
+    this.riskBar = new ResourceBar(this, barX, startY + spacing * 3, barWidth, barHeight, GameScene.MAX_RISK, this.risk, 'Risk', 0xff0000);
+    this.researchBar = new ResourceBar(this, barX, startY + spacing * 4, barWidth, barHeight, GameScene.RESEARCH_NEEDED, this.researchPoints, 'Research', 0x00ffff);
 
     // Instructions / status text
-    this.infoText = this.add.text(20, startY + spacing * 6, 'Choose an action for this turn.', { fontSize: '16px' });
+    this.infoText = this.add.text(
+      barX, 
+      startY + spacing * 6, 
+      'Choose an action for this turn.', 
+      this.textStyleInfo
+    );
 
-    // Create container for action buttons and descriptions
-    this.actionsContainer = this.add.container(0, 0);
+    // Calculate button positions based on resource bar spacing and screen size
+    // Different layouts for portrait vs landscape on mobile
+    let buttonSpacing;
+    let buttonStartY;
+    
+    if (isMobile) {
+      if (isLandscape) {
+        // Landscape mobile: buttons on right side
+        buttonStartY = startY;
+        buttonSpacing = 80; // Larger touch targets
+      } else {
+        // Portrait mobile: buttons at bottom
+        buttonStartY = Math.min(startY + spacing * 8, gameHeight * 0.6);
+        buttonSpacing = 90; // Even larger touch targets for portrait mode
+      }
+    } else {
+      // Desktop layout
+      buttonStartY = startY + spacing * 8;
+      buttonSpacing = 50;
+    }
 
-    // Calculate button positions based on resource bar spacing
-    const buttonStartY = startY + spacing * 8;
-
-    // Action buttons using helper method
-    this.createActionButton(buttonStartY, 'Theoretical Research', () => this.showTheoreticalResearchOptions());
-    this.createActionButton(buttonStartY + 30, 'Practical Research', () => this.showPracticalResearchOptions());
-    this.createActionButton(buttonStartY + 60, 'Public Engagement', () => this.showCommunityEngagementOptions());
+    // Add a separator line above the buttons for visual clarity
+    this.add.graphics()
+      .lineStyle(2, 0x666666, 0.8)
+      .lineBetween(barX, buttonStartY - 20, barX + gameWidth * 0.8, buttonStartY - 20);
+    
+    // Create action buttons with optimized layout for orientation
+    if (isMobile && isLandscape) {
+      // Landscape layout: buttons on right side
+      const rightSideX = gameWidth * 0.6;
+      
+      this.add.text(rightSideX, buttonStartY, 'Theoretical Research', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showTheoreticalResearchOptions());
+        
+      this.add.text(rightSideX, buttonStartY + buttonSpacing, 'Practical Research', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showPracticalResearchOptions());
+        
+      this.add.text(rightSideX, buttonStartY + buttonSpacing * 2, 'Public Engagement', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showCommunityEngagementOptions());
+    } else {
+      // Portrait or desktop layout: buttons stacked vertically
+      this.add.text(barX, buttonStartY, 'Theoretical Research', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showTheoreticalResearchOptions());
+        
+      this.add.text(barX, buttonStartY + buttonSpacing, 'Practical Research', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showPracticalResearchOptions());
+        
+      this.add.text(barX, buttonStartY + buttonSpacing * 2, 'Public Engagement', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showCommunityEngagementOptions());
+    }
+    
+    // Update resource displays
+    this.updateResourceDisplay();
+  }
+  
+  /**
+   * Handle window resize events
+   */
+  handleResize() {
+    // Stop all tweens and input events
+    this.tweens.killAll();
+    
+    // Clean up all elements
+    this.children.list.forEach(child => {
+      if (child.destroy) {
+        child.destroy();
+      }
+    });
+    
+    // Small delay to ensure clean rebuild
+    this.time.delayedCall(50, () => {
+      // Reinitialize UI components with new dimensions
+      this.initUI();
+    });
   }
 
   updateResourceDisplay() {
@@ -131,35 +266,78 @@ export class GameScene extends Phaser.Scene {
     // Clear any existing options first
     this.clearActionOptions();
     
-    // Create option buttons for each theoretical research
-    const yPos = 350;
-    const spacing = 80;
+    // Get screen dimensions for responsive layout
+    const gameWidth = this.scale.width;
+    const gameHeight = this.scale.height;
+    const isMobile = gameWidth < 768;
+    const isLandscape = gameWidth > gameHeight;
+    
+    // Determine layout based on screen size and orientation
+    let yPos, xPos, spacing, descX, descWidth;
+    
+    if (isMobile) {
+      if (isLandscape) {
+        // Landscape mobile layout
+        yPos = 120;
+        xPos = 20;
+        spacing = 90; // Larger touch targets for mobile
+        descX = gameWidth * 0.35;
+        descWidth = gameWidth * 0.6;
+      } else {
+        // Portrait mobile layout
+        yPos = 220;
+        xPos = 20;
+        spacing = 100; // Larger spacing for portrait
+        descX = xPos;
+        descWidth = gameWidth * 0.9;
+      }
+    } else {
+      // Desktop layout
+      yPos = 350;
+      xPos = 20;
+      spacing = 80;
+      descX = 180;
+      descWidth = 400;
+    }
     
     researchTheoretical.forEach((research, index) => {
-      const button = this.createActionButton(yPos + index * spacing, research.name.en, () => {
-        if (this.money >= research.cost && this.turnsRemaining >= research.timeRequired) {
-          this.doTheoreticalResearch(research);
-        } else {
-          this.infoText.setText('Not enough resources for this action.');
-        }
-      });
+      // Create button with larger size on mobile
+      this.add.text(xPos, yPos + index * spacing, research.name.en, this.buttonStyleOption)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => {
+          if (this.money >= research.cost && this.turnsRemaining >= research.timeRequired) {
+            this.doTheoreticalResearch(research);
+          } else {
+            this.infoText.setText('Not enough resources for this action.');
+          }
+        })
+        .setData('isOption', true); // Mark as option button for cleanup
       
-      // Add description text
-      const desc = this.add.text(180, yPos + index * spacing, 
+      // Add description text - layout depends on orientation for mobile
+      let descY;
+      if (isMobile && !isLandscape) {
+        // On portrait mobile, place description below button
+        descY = yPos + index * spacing + 40;
+      } else {
+        // On landscape or desktop, place beside button
+        descY = yPos + index * spacing;
+      }
+      
+      this.add.text(descX, descY, 
         `Cost: $${research.cost}, Time: ${research.timeRequired} turns
         Risk: ${research.effects.seismicRisk || 0}, Knowledge: +${research.effects.knowledge || 0}
         ${research.description.en}`, 
-        { fontSize: '12px', wordWrap: { width: 400 } }
-      );
-      
-      this.actionsContainer.add([button, desc]);
+        this.textStyleDesc
+      ).setData('isOption', true); // Mark as option for cleanup
     });
     
-    // Add back button
-    const backButton = this.createActionButton(yPos + researchTheoretical.length * spacing, 'Back', () => {
-      this.clearActionOptions();
-    });
-    this.actionsContainer.add(backButton);
+    // Add back button at the bottom
+    const backButtonY = yPos + researchTheoretical.length * spacing + (isMobile ? 20 : 0);
+    
+    this.add.text(xPos, backButtonY, 'Back', this.buttonStyleMain)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.clearActionOptions())
+      .setData('isOption', true); // Mark as option for cleanup
   }
   
   /**
@@ -169,35 +347,78 @@ export class GameScene extends Phaser.Scene {
     // Clear any existing options first
     this.clearActionOptions();
     
-    // Create option buttons for each practical research
-    const yPos = 350;
-    const spacing = 80;
+    // Get screen dimensions for responsive layout
+    const gameWidth = this.scale.width;
+    const gameHeight = this.scale.height;
+    const isMobile = gameWidth < 768;
+    const isLandscape = gameWidth > gameHeight;
+    
+    // Determine layout based on screen size and orientation
+    let yPos, xPos, spacing, descX, descWidth;
+    
+    if (isMobile) {
+      if (isLandscape) {
+        // Landscape mobile layout
+        yPos = 120;
+        xPos = 20;
+        spacing = 90; // Larger touch targets for mobile
+        descX = gameWidth * 0.35;
+        descWidth = gameWidth * 0.6;
+      } else {
+        // Portrait mobile layout
+        yPos = 220;
+        xPos = 20;
+        spacing = 100; // Larger spacing for portrait
+        descX = xPos;
+        descWidth = gameWidth * 0.9;
+      }
+    } else {
+      // Desktop layout
+      yPos = 350;
+      xPos = 20;
+      spacing = 80;
+      descX = 180;
+      descWidth = 400;
+    }
     
     researchPractical.forEach((research, index) => {
-      const button = this.createActionButton(yPos + index * spacing, research.name.en, () => {
-        if (this.money >= research.cost && this.turnsRemaining >= research.timeRequired) {
-          this.doPracticalResearch(research);
-        } else {
-          this.infoText.setText('Not enough resources for this action.');
-        }
-      });
+      // Create button with larger size on mobile
+      this.add.text(xPos, yPos + index * spacing, research.name.en, this.buttonStyleOption)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => {
+          if (this.money >= research.cost && this.turnsRemaining >= research.timeRequired) {
+            this.doPracticalResearch(research);
+          } else {
+            this.infoText.setText('Not enough resources for this action.');
+          }
+        })
+        .setData('isOption', true); // Mark as option button for cleanup
       
-      // Add description text
-      const desc = this.add.text(180, yPos + index * spacing, 
+      // Add description text - layout depends on orientation for mobile
+      let descY;
+      if (isMobile && !isLandscape) {
+        // On portrait mobile, place description below button
+        descY = yPos + index * spacing + 40;
+      } else {
+        // On landscape or desktop, place beside button
+        descY = yPos + index * spacing;
+      }
+      
+      this.add.text(descX, descY, 
         `Cost: $${research.cost}, Time: ${research.timeRequired} turns
         Risk: ${research.effects.seismicRisk || 0}, Knowledge: +${research.effects.knowledge || 0}
         ${research.description.en}`, 
-        { fontSize: '12px', wordWrap: { width: 400 } }
-      );
-      
-      this.actionsContainer.add([button, desc]);
+        this.textStyleDesc
+      ).setData('isOption', true); // Mark as option for cleanup
     });
     
-    // Add back button
-    const backButton = this.createActionButton(yPos + researchPractical.length * spacing, 'Back', () => {
-      this.clearActionOptions();
-    });
-    this.actionsContainer.add(backButton);
+    // Add back button at the bottom
+    const backButtonY = yPos + researchPractical.length * spacing + (isMobile ? 20 : 0);
+    
+    this.add.text(xPos, backButtonY, 'Back', this.buttonStyleMain)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.clearActionOptions())
+      .setData('isOption', true); // Mark as option for cleanup
   }
   
   /**
@@ -207,42 +428,157 @@ export class GameScene extends Phaser.Scene {
     // Clear any existing options first
     this.clearActionOptions();
     
-    // Create option buttons for each community engagement
-    const yPos = 350;
-    const spacing = 80;
+    // Get screen dimensions for responsive layout
+    const gameWidth = this.scale.width;
+    const gameHeight = this.scale.height;
+    const isMobile = gameWidth < 768;
+    const isLandscape = gameWidth > gameHeight;
+    
+    // Determine layout based on screen size and orientation
+    let yPos, xPos, spacing, descX, descWidth;
+    
+    if (isMobile) {
+      if (isLandscape) {
+        // Landscape mobile layout
+        yPos = 120;
+        xPos = 20;
+        spacing = 90; // Larger touch targets for mobile
+        descX = gameWidth * 0.35;
+        descWidth = gameWidth * 0.6;
+      } else {
+        // Portrait mobile layout
+        yPos = 220;
+        xPos = 20;
+        spacing = 100; // Larger spacing for portrait
+        descX = xPos;
+        descWidth = gameWidth * 0.9;
+      }
+    } else {
+      // Desktop layout
+      yPos = 350;
+      xPos = 20;
+      spacing = 80;
+      descX = 180;
+      descWidth = 400;
+    }
     
     communityEngagement.forEach((action, index) => {
-      const button = this.createActionButton(yPos + index * spacing, action.name.en, () => {
-        if (this.money >= action.cost && this.turnsRemaining >= action.timeRequired) {
-          this.doCommunityEngagement(action);
-        } else {
-          this.infoText.setText('Not enough resources for this action.');
-        }
-      });
+      // Create button with larger size on mobile
+      this.add.text(xPos, yPos + index * spacing, action.name.en, this.buttonStyleOption)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => {
+          if (this.money >= action.cost && this.turnsRemaining >= action.timeRequired) {
+            this.doCommunityEngagement(action);
+          } else {
+            this.infoText.setText('Not enough resources for this action.');
+          }
+        })
+        .setData('isOption', true); // Mark as option button for cleanup
       
-      // Add description text
-      const desc = this.add.text(180, yPos + index * spacing, 
+      // Add description text - layout depends on orientation for mobile
+      let descY;
+      if (isMobile && !isLandscape) {
+        // On portrait mobile, place description below button
+        descY = yPos + index * spacing + 40;
+      } else {
+        // On landscape or desktop, place beside button
+        descY = yPos + index * spacing;
+      }
+      
+      // Format money effect differently based on whether it's positive or negative
+      const moneyEffect = action.effects.money 
+        ? (action.effects.money > 0 ? `+${action.effects.money}` : action.effects.money)
+        : 0;
+      
+      this.add.text(descX, descY, 
         `Cost: $${action.cost}, Time: ${action.timeRequired} turns
-        Opinion: +${action.effects.publicOpinion || 0}
+        Opinion: +${action.effects.publicOpinion || 0}${action.effects.money ? `, Money: ${moneyEffect}` : ''}
         ${action.description.en}`, 
-        { fontSize: '12px', wordWrap: { width: 400 } }
-      );
-      
-      this.actionsContainer.add([button, desc]);
+        this.textStyleDesc
+      ).setData('isOption', true); // Mark as option for cleanup
     });
     
-    // Add back button
-    const backButton = this.createActionButton(yPos + communityEngagement.length * spacing, 'Back', () => {
-      this.clearActionOptions();
-    });
-    this.actionsContainer.add(backButton);
+    // Add back button at the bottom
+    const backButtonY = yPos + communityEngagement.length * spacing + (isMobile ? 20 : 0);
+    
+    this.add.text(xPos, backButtonY, 'Back', this.buttonStyleMain)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.clearActionOptions())
+      .setData('isOption', true); // Mark as option for cleanup
   }
   
   /**
    * Clear all action option buttons and text
    */
   clearActionOptions() {
-    this.actionsContainer.removeAll(true);
+    // Destroy any existing option buttons
+    this.children.list.forEach(child => {
+      // Check if it's a button created for options (not our main action buttons)
+      if (child.getData('isOption')) {
+        child.destroy();
+      }
+    });
+    
+    // Recreate the main button layout
+    // Get screen dimensions for responsive layout
+    const gameWidth = this.scale.width;
+    const gameHeight = this.scale.height;
+    const isMobile = gameWidth < 768;
+    const isLandscape = gameWidth > gameHeight;
+    
+    // Calculate button positions and spacing
+    let buttonSpacing;
+    let buttonStartY;
+    const startY = 20;
+    const spacing = isMobile ? 20 : 25;
+    const barX = isMobile ? gameWidth * 0.05 : 20;
+    
+    if (isMobile) {
+      if (isLandscape) {
+        // Landscape mobile: buttons on right side
+        buttonStartY = startY;
+        buttonSpacing = 80; // Larger touch targets
+      } else {
+        // Portrait mobile: buttons at bottom
+        buttonStartY = Math.min(startY + spacing * 8, gameHeight * 0.6);
+        buttonSpacing = 90; // Even larger touch targets for portrait mode
+      }
+    } else {
+      // Desktop layout
+      buttonStartY = startY + spacing * 8;
+      buttonSpacing = 50;
+    }
+    
+    // Create action buttons with optimized layout for orientation
+    if (isMobile && isLandscape) {
+      // Landscape layout: buttons on right side
+      const rightSideX = gameWidth * 0.6;
+      
+      this.add.text(rightSideX, buttonStartY, 'Theoretical Research', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showTheoreticalResearchOptions());
+        
+      this.add.text(rightSideX, buttonStartY + buttonSpacing, 'Practical Research', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showPracticalResearchOptions());
+        
+      this.add.text(rightSideX, buttonStartY + buttonSpacing * 2, 'Public Engagement', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showCommunityEngagementOptions());
+    } else {
+      // Portrait or desktop layout: buttons stacked vertically
+      this.add.text(barX, buttonStartY, 'Theoretical Research', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showTheoreticalResearchOptions());
+        
+      this.add.text(barX, buttonStartY + buttonSpacing, 'Practical Research', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showPracticalResearchOptions());
+        
+      this.add.text(barX, buttonStartY + buttonSpacing * 2, 'Public Engagement', this.buttonStyleMain)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.showCommunityEngagementOptions());
+    }
   }
   
   /**
@@ -294,11 +630,33 @@ export class GameScene extends Phaser.Scene {
   }
 
   handleSeismicEvents() {
-    // Check if a random event occurs based on risk level
-    if (Math.random() * 100 < this.risk) {  // risk is a percentage chance
-      // Select a random event from the events array
-      const eventIndex = Math.floor(Math.random() * events.length);
-      const randomEvent = events[eventIndex];
+    // Ensure events happen consistently by having a minimum event chance
+    const eventChance = Math.max(20, this.risk); // At least 20% chance of event
+    
+    // Check if a random event occurs
+    if (Math.random() * 100 < eventChance) {
+      // Select a random event from the events array based on game state
+      let possibleEvents = [...events];
+      
+      // Filter events that would be too punishing if money/turns are low
+      if (this.money < 50) {
+        possibleEvents = possibleEvents.filter(event => 
+          !event.effects.money || event.effects.money > -20);
+      }
+      
+      if (this.turnsRemaining < 3) {
+        possibleEvents = possibleEvents.filter(event => 
+          !event.effects.time || event.effects.time === 0);
+      }
+      
+      // If no events match the filters, use the full list
+      if (possibleEvents.length === 0) {
+        possibleEvents = [...events];
+      }
+      
+      // Select a random event from the filtered list
+      const eventIndex = Math.floor(Math.random() * possibleEvents.length);
+      const randomEvent = possibleEvents[eventIndex];
       
       // Apply the event effects
       if (randomEvent.effects.publicOpinion) this.publicOpinion += randomEvent.effects.publicOpinion;

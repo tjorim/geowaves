@@ -58,6 +58,17 @@ export class ResourceBar {
    * Create the visual elements of the resource bar
    */
   private create() {
+    // Make sure any previous instances are cleaned up
+    if (this.barContainer) {
+      this.barContainer.destroy();
+    }
+    if (this.barFill) {
+      this.barFill.destroy();
+    }
+    if (this.textLabel) {
+      this.textLabel.destroy();
+    }
+    
     // Create container (outline)
     this.barContainer = this.scene.add.graphics();
     this.barContainer.lineStyle(2, 0xffffff, 1);
@@ -67,13 +78,44 @@ export class ResourceBar {
     this.barFill = this.scene.add.graphics();
     this.updateBar();
 
-    // Create label
+    // Detect if on mobile device
+    const gameWidth = this.scene.scale.width;
+    const isMobile = gameWidth < 768;
+    
+    // Create label - adjust position and size for mobile
+    // Calculate how far the label needs to be from the bar based on screen size
+    const labelOffset = isMobile 
+      ? Math.min(10, gameWidth * 0.02) // Smaller offset on mobile
+      : 10;
+    
+    // For very small screens, place labels below the bar instead of to the right
+    const verySmallScreen = gameWidth < 400;
+    
+    const labelX = verySmallScreen 
+      ? this.x + (this.width / 2) // Center below the bar on very small screens
+      : this.x + this.width + labelOffset;
+      
+    const labelY = verySmallScreen
+      ? this.y + this.height + 10 // Below the bar on very small screens
+      : this.y + (this.height / 2); // Centered vertically on larger screens
+    
+    // Create the label with appropriate text
+    const labelText = verySmallScreen
+      ? `${this.label}\n${this.currentValue}/${this.maxValue}` // Split to two lines on very small screens
+      : `${this.label}: ${this.currentValue}/${this.maxValue}`;
+      
     this.textLabel = this.scene.add.text(
-      this.x + this.width + 10,
-      this.y + (this.height / 2),
-      `${this.label}: ${this.currentValue}/${this.maxValue}`,
-      { fontSize: '16px', color: '#ffffff' }
-    ).setOrigin(0, 0.5);
+      labelX,
+      labelY,
+      labelText,
+      { 
+        fontSize: isMobile ? '12px' : '16px', 
+        color: '#ffffff',
+        align: verySmallScreen ? 'center' : 'left',
+        // Make label more compact on mobile
+        padding: isMobile ? { left: 0, right: 0, top: 0, bottom: 0 } : undefined
+      }
+    ).setOrigin(verySmallScreen ? 0.5 : 0, 0.5);
   }
 
   /**
@@ -83,7 +125,17 @@ export class ResourceBar {
   public setValue(newValue: number) {
     this.currentValue = Phaser.Math.Clamp(newValue, 0, this.maxValue);
     this.updateBar();
-    this.textLabel.setText(`${this.label}: ${this.currentValue}/${this.maxValue}`);
+    
+    // Check if we're on a very small screen
+    const gameWidth = this.scene.scale.width;
+    const verySmallScreen = gameWidth < 400;
+    
+    // Format label text based on screen size
+    const labelText = verySmallScreen
+      ? `${this.label}\n${this.currentValue}/${this.maxValue}` // Split to two lines on very small screens
+      : `${this.label}: ${this.currentValue}/${this.maxValue}`;
+      
+    this.textLabel.setText(labelText);
   }
 
   /**

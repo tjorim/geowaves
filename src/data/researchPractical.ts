@@ -12,9 +12,9 @@ export const researchPractical = [
         nl: "Boor een testput om temperatuur- en drukgegevens te verzamelen.",
         fr: "Forer un puits test pour collecter des données de température et de pression."
       },
-      cost: 40,
-      timeRequired: 3,
-      effects: { seismicRisk: +10, knowledge: +15, publicOpinion: -2 }
+      cost: 30, // Reduced from 40
+      timeRequired: 2, // Reduced from 3
+      effects: { seismicRisk: +10, knowledge: +20, publicOpinion: -5, money: +15 } // Added money benefit, increased knowledge
     },
     {
       id: "practical_002",
@@ -28,9 +28,9 @@ export const researchPractical = [
         nl: "Plaats seismische sensoren in het gebied om activiteit te volgen en de risicobeoordeling te verbeteren.",
         fr: "Déployez des capteurs sismiques dans la région pour suivre l'activité et améliorer l'évaluation des risques."
       },
-      cost: 30,
-      timeRequired: 2,
-      effects: { seismicRisk: -5, knowledge: +10, publicOpinion: +5 }
+      cost: 20, // Reduced from 30
+      timeRequired: 1, // Reduced from 2
+      effects: { seismicRisk: -10, knowledge: +12, publicOpinion: +10 } // Increased all benefits
     },
     {
       id: "practical_003",

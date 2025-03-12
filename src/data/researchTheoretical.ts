@@ -12,9 +12,9 @@ export const researchTheoretical = [
         nl: "Analyseer ondergrondse temperaturen en geologische structuren om de hulpbronnen te beoordelen.",
         fr: "Analyse des températures souterraines et des structures géologiques pour évaluer le potentiel de la ressource."
       },
-      cost: 15,
-      timeRequired: 2,
-      effects: { seismicRisk: -5, publicOpinion: 0, knowledge: +10 }
+      cost: 10, // Reduced from 15
+      timeRequired: 1, // Reduced from 2
+      effects: { seismicRisk: -5, publicOpinion: +2, knowledge: +12 } // Added public opinion benefit, increased knowledge
     },
     {
       id: "theory_002",
@@ -28,9 +28,9 @@ export const researchTheoretical = [
         nl: "Ontwikkel simulatiemodellen om de efficiëntie van energie-extractie te optimaliseren.",
         fr: "Développez des modèles de simulation pour optimiser l'efficacité de l'extraction d'énergie."
       },
-      cost: 20,
-      timeRequired: 3,
-      effects: { knowledge: +15, seismicRisk: -3 }
+      cost: 15, // Reduced from 20
+      timeRequired: 2, // Reduced from 3
+      effects: { knowledge: +18, seismicRisk: -3, money: +10 } // Added money benefit, increased knowledge
     },
     {
       id: "theory_003",

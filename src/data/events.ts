@@ -73,7 +73,7 @@ export const events = [
         nl: "Onverwachte financieringsboost van een milieu-NGO die hernieuwbare energie steunt.",
         fr: "Un financement inattendu d'une ONG environnementale soutenant les énergies renouvelables."
       },
-      effects: { money: +20, publicOpinion: +5, seismicRisk: 0, time: 0 }
+      effects: { money: +40, publicOpinion: +10, seismicRisk: 0, time: 0 } // Doubled the money benefit
     },
     {
       id: "event_008",
@@ -83,7 +83,7 @@ export const events = [
         nl: "Budgetoverschrijdingen door onverwachte boorkosten.",
         fr: "Dépassement du budget en raison de coûts de forage imprévus."
       },
-      effects: { money: -30, publicOpinion: -5, time: 0 }
+      effects: { money: -20, publicOpinion: -5, time: 0 } // Reduced negative money effect
     },
   
     // Environmental Events
@@ -127,7 +127,27 @@ export const events = [
         nl: "Regelgevende goedkeuring is vertraagd vanwege ontbrekende milieueffectrapporten.",
         fr: "L'approbation réglementaire est retardée en raison de l'absence de rapports d'impact environnemental."
       },
-      effects: { time: +3, money: -10, publicOpinion: -5 }
+      effects: { time: +2, money: -10, publicOpinion: -5 } // Reduced time penalty
+    },
+    {
+      id: "event_013",
+      category: "Financial",
+      description: {
+        en: "Local business consortium offers funding in exchange for future energy credits.",
+        nl: "Lokaal bedrijvenconsortium biedt financiering in ruil voor toekomstige energiekredieten.",
+        fr: "Un consortium d'entreprises locales offre un financement en échange de crédits d'énergie futurs."
+      },
+      effects: { money: +35, publicOpinion: +5, time: 0 }
+    },
+    {
+      id: "event_014",
+      category: "Community",
+      description: {
+        en: "Local school requests educational tour of your facility.",
+        nl: "Lokale school vraagt om educatieve rondleiding door uw faciliteit.",
+        fr: "Une école locale demande une visite éducative de votre installation."
+      },
+      effects: { publicOpinion: +15, money: -5, time: 0 }
     }
   ];
   
