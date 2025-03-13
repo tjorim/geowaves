@@ -1,0 +1,30 @@
+{
+  "name": "geowaves",
+  "version": "1.0.0",
+  "description": "A Phaser-based game with geographic wave mechanics",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "Jorim Tielemans <tielemans.jorim@gmail.com>",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "phaser": "^3.88.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3",
+    "vite": "^6.2.1",
+    "vitest": "^3.0.8"
+  }
+}
